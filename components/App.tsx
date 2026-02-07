@@ -80,7 +80,7 @@ const fromDbProgress = (dbProgress: any): UserProgress => ({
     points: dbProgress.points,
     level: dbProgress.level,
     streak: dbProgress.streak,
-    achievements: dbProgress.achievements,
+    achievements: dbProgress.achievements || [],
     purchasedThemes: dbProgress.purchased_themes || ['default'],
     activeTheme: dbProgress.active_theme || 'default',
     purchasedSoundPacks: dbProgress.purchased_sound_packs || ['none'],
@@ -218,7 +218,8 @@ const App: React.FC = () => {
         const [tasksResponse, habitsResponse, progressResponse] = await Promise.all([
           supabase.from('tasks').select('*').eq('user_id', session.user.id),
           supabase.from('habits').select('*').eq('user_id', session.user.id),
-          supabase.from('user_profile_progress').select('*').eq('user_id', session.user.id).single()
+          // Use maybeSingle() to handle 0 rows gracefully without error
+          supabase.from('user_profile_progress').select('*').eq('user_id', session.user.id).maybeSingle()
         ]);
 
         // Process Tasks
@@ -231,23 +232,31 @@ const App: React.FC = () => {
                 id: h.id, title: h.title, icon: h.icon, timeOfDay: h.time_of_day, completedDays: h.completed_days || []
              })));
         
-        // Process Progress with Seeding
+        // Process Progress with Explicit Seeding
         if (progressResponse.error) {
-            if (progressResponse.error.code === 'PGRST116') {
-                 // Profile missing - Seed it immediately
-                 console.log("Profile not found, seeding initial progress...");
-                 const dbInit = toDbProgress(initialProgress, session.user.id);
-                 const { error: seedError } = await supabase.from('user_profile_progress').upsert(dbInit);
-                 if (seedError) console.error("Error seeding profile:", seedError);
-                 setProgress(initialProgress);
-            } else {
-                 console.error('Error fetching profile:', progressResponse.error.message);
-                 if (progressResponse.error.message.includes("schema cache")) {
-                      alert("שגיאה חמורה: נראה שמבנה מסד הנתונים אינו מעודכן. אנא רענן.");
-                 }
-            }
+             console.error('Error fetching profile:', progressResponse.error.message);
+             if (progressResponse.error.message.includes("schema cache")) {
+                  alert("שגיאה חמורה: נראה שמבנה מסד הנתונים אינו מעודכן. אנא רענן.");
+             }
         } else if (progressResponse.data) {
+            // Profile found
             setProgress(fromDbProgress(progressResponse.data));
+        } else {
+            // No profile found (First Login) - Seed immediately
+            console.log("Profile not found (First Login). Seeding initial progress to user_profile_progress...");
+            const dbInit = toDbProgress(initialProgress, session.user.id);
+            const { error: seedError, data: seedData } = await supabase
+                .from('user_profile_progress')
+                .upsert(dbInit)
+                .select()
+                .single();
+            
+            if (seedError) {
+                console.error("CRITICAL: Error seeding profile:", seedError.message);
+            } else if (seedData) {
+                console.log("✅ Profile seeded successfully:", seedData);
+            }
+            setProgress(initialProgress);
         }
         
         isInitialLoadComplete.current = true;
