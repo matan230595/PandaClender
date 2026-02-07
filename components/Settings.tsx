@@ -22,6 +22,7 @@ interface SettingsProps {
   onSoundChange: (soundId: string) => void;
   tasks: Task[];
   habits: Habit[];
+  onUpdateApiKeys: (keys: string[]) => void;
 }
 
 const Accordion: React.FC<{
@@ -50,10 +51,10 @@ const Accordion: React.FC<{
 const Settings: React.FC<SettingsProps> = ({ 
   onGoogleLogin, isGoogleConnected, isConnectingToGoogle, onLogout, googleUser,
   customColors, setCustomColors, progress, onThemeChange, activeSound, onSoundChange,
-  tasks, habits
+  tasks, habits, onUpdateApiKeys
 }) => {
   const [openSection, setOpenSection] = useState<AccordionSection | null>('integrations');
-  const [apiKeys, setApiKeys] = useState<string[]>([]);
+  const [apiKeys, setApiKeys] = useState<string[]>(progress.apiKeys || []);
   const [keyStatuses, setKeyStatuses] = useState<Record<string, Status>>({});
   const [newApiKey, setNewApiKey] = useState('');
   
@@ -77,23 +78,21 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   useEffect(() => {
-    let parsedKeys: string[] = [];
-    try {
-      const storedKeys = localStorage.getItem('ff_api_keys_list');
-      if (storedKeys) {
-          parsedKeys = JSON.parse(storedKeys);
-          setApiKeys(parsedKeys);
-          const initialStatuses: Record<string, Status> = {};
-          parsedKeys.forEach((key: string) => { initialStatuses[key] = 'unchecked' });
-          setKeyStatuses(initialStatuses);
-          // Automatically test all unchecked keys on load
-          parsedKeys.forEach(key => testApiKey(key));
-      }
-    } catch (e) {
-      console.error("Failed to parse API keys from localStorage", e);
-      setApiKeys([]);
-    }
-  }, []);
+    setApiKeys(progress.apiKeys || []);
+    const initialStatuses: Record<string, Status> = {};
+    (progress.apiKeys || []).forEach((key: string) => { 
+        initialStatuses[key] = keyStatuses[key] || 'unchecked' 
+    });
+    setKeyStatuses(initialStatuses);
+
+    // Test any unchecked keys
+    (progress.apiKeys || []).forEach(key => {
+        if (!keyStatuses[key]) {
+            testApiKey(key);
+        }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress.apiKeys]);
   
   useEffect(() => {
     localStorage.setItem('ff_habit_reminder_times', JSON.stringify(habitReminderTimes));
@@ -107,8 +106,7 @@ const Settings: React.FC<SettingsProps> = ({
     if (newApiKey.trim() && !apiKeys.includes(newApiKey.trim())) {
       const newKey = newApiKey.trim();
       const updatedKeys = [...apiKeys, newKey];
-      setApiKeys(updatedKeys);
-      localStorage.setItem('ff_api_keys_list', JSON.stringify(updatedKeys));
+      onUpdateApiKeys(updatedKeys);
       setNewApiKey('');
       testApiKey(newKey);
     }
@@ -116,8 +114,7 @@ const Settings: React.FC<SettingsProps> = ({
 
   const removeApiKey = (keyToRemove: string) => {
     const updatedKeys = apiKeys.filter(key => key !== keyToRemove);
-    setApiKeys(updatedKeys);
-    localStorage.setItem('ff_api_keys_list', JSON.stringify(updatedKeys));
+    onUpdateApiKeys(updatedKeys);
     const newStatuses = { ...keyStatuses };
     delete newStatuses[keyToRemove];
     setKeyStatuses(newStatuses);
@@ -202,7 +199,7 @@ const Settings: React.FC<SettingsProps> = ({
         <div className="space-y-4">
             <Accordion title="אינטגרציות והתראות" icon="🔌" isOpen={openSection === 'integrations'} onClick={() => toggleSection('integrations')}>
                 <IntegrationRow icon="🤖" name="Google AI (Gemini)" status={Object.values(keyStatuses).some(s => s === 'valid') ? 'valid' : Object.values(keyStatuses).some(s => s === 'checking') ? 'checking' : 'invalid'} statusText={Object.values(keyStatuses).some(s => s === 'valid') ? 'מחובר' : 'לא מחובר'}>
-                    <p className="text-xs text-slate-500 mb-4">נדרש עבור תכונות AI. המפתחות נשמרים מקומית בדפדפן שלך בלבד.</p>
+                    <p className="text-xs text-slate-500 mb-4">נדרש עבור תכונות AI. המפתחות מסונכרנים עם החשבון שלך.</p>
                     <div className="space-y-2">
                         {apiKeys.map((key) => (
                         <div key={key} className="flex items-center justify-between gap-2 bg-white p-2 rounded-lg border border-slate-200">

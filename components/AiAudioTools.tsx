@@ -255,7 +255,7 @@ const TranscriptionTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
             const base64Audio = await blobToBase64(audioBlob);
             const response = await ai.models.generateContent({
                 model: 'gemini-3-flash-preview',
-                contents: { parts: [{ inlineData: { mimeType: 'audio/webm', data: base64Audio } }, {text: "Transcribe this audio in Hebrew."}] },
+                contents: { parts: [{ inlineData: { mimeType: 'audio/webm', data: base64Audio } }, {text: "Transcribe the following audio. The audio is in Hebrew. Your response must contain ONLY the raw transcribed text. Do not add any introductory phrases, explanations, or markdown formatting."}] },
             });
             setTranscribedText(response.text ?? '');
         } catch (err) {

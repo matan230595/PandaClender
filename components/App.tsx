@@ -72,6 +72,7 @@ const toDbProgress = (progress: UserProgress, userId: string) => ({
     purchased_sound_packs: progress.purchasedSoundPacks,
     purchased_confetti_packs: progress.purchasedConfettiPacks,
     active_power_up: progress.activePowerUp,
+    api_keys: progress.apiKeys,
 });
 
 const fromDbProgress = (dbProgress: any): UserProgress => ({
@@ -84,6 +85,7 @@ const fromDbProgress = (dbProgress: any): UserProgress => ({
     purchasedSoundPacks: dbProgress.purchased_sound_packs,
     purchasedConfettiPacks: dbProgress.purchased_confetti_packs,
     activePowerUp: dbProgress.active_power_up,
+    apiKeys: dbProgress.api_keys || [],
 });
 
 const initialProgress: UserProgress = {
@@ -96,6 +98,7 @@ const initialProgress: UserProgress = {
     purchasedSoundPacks: ['none'],
     purchasedConfettiPacks: [],
     activePowerUp: null,
+    apiKeys: [],
 };
 
 const LoadingScreen: React.FC = () => (
@@ -305,7 +308,7 @@ const App: React.FC = () => {
     
     const { data, error } = await supabase
         .from('tasks')
-        .insert(toDbTask(fullNewTask))
+        .insert([toDbTask(fullNewTask)])
         .select()
         .single();
         
@@ -328,7 +331,7 @@ const App: React.FC = () => {
         title: parsedTask.title,
         dueDate: new Date(parsedTask.dueDate),
         reminders: { ...parsedTask.reminders, custom: null },
-        priority: Priority.REGULAR, // Default priority
+        priority: parsedTask.priority || Priority.REGULAR,
         subTasks: [],
         category: 'אישי' as const, // Default category
       };
@@ -493,7 +496,7 @@ const App: React.FC = () => {
     };
     const { data, error } = await supabase
         .from('habits')
-        .insert(dbHabit)
+        .insert([dbHabit])
         .select()
         .single();
 
@@ -584,6 +587,12 @@ const App: React.FC = () => {
   
   const handleSoundChange = (soundId: string) => {
     setActiveSound(soundId);
+  };
+  
+  const handleUpdateApiKeys = async (newKeys: string[]) => {
+    if (!session || !supabase) return;
+    setProgress(prev => ({...prev, apiKeys: newKeys}));
+    // The useEffect for progress saving will automatically sync this to Supabase.
   };
 
   const sendEmailReport = async (type: 'day' | 'week') => {
@@ -779,6 +788,7 @@ const App: React.FC = () => {
                 onSoundChange={handleSoundChange}
                 tasks={tasks}
                 habits={habits}
+                onUpdateApiKeys={handleUpdateApiKeys}
             />}
           </div>
         </main>

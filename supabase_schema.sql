@@ -1,4 +1,3 @@
-
 -- ### PandaClender Supabase Schema ###
 -- To use this file:
 -- 1. Go to your Supabase project dashboard.
@@ -89,6 +88,7 @@ CREATE TABLE public.user_progress (
     purchased_sound_packs text[] NULL,
     purchased_confetti_packs text[] NULL,
     active_power_up jsonb NULL,
+    api_keys text[] NULL,
     CONSTRAINT user_progress_pkey PRIMARY KEY (user_id),
     CONSTRAINT user_progress_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
 );

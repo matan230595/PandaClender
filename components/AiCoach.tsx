@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Task, UserProgress } from '../lib/types';
+import { Task, UserProgress, Priority } from '../lib/types';
 import { generateContentWithFallback } from '../utils/ai';
 
 interface AiCoachProps {
@@ -16,11 +16,20 @@ const AiCoach: React.FC<AiCoachProps> = ({ onClose, tasks, progress }) => {
   useEffect(() => {
     const fetchTip = async () => {
       setIsLoading(true);
-      const prompt = `Act as a supportive ADHD coach. Based on the user's data below, provide one concise, actionable, and encouraging tip in Hebrew. The user is feeling overwhelmed.
-      - Uncompleted tasks: ${JSON.stringify(tasks.filter(t => !t.completed))}
-      - User points: ${progress.points}
-      - Current streak: ${progress.streak} days.
-      Focus on breaking down tasks, starting small, or acknowledging their effort so far. Keep it under 50 words. Be very friendly and use emojis.`;
+      
+      const uncompletedTasks = tasks.filter(t => !t.completed);
+      const priorityOrder = { [Priority.URGENT]: 0, [Priority.IMPORTANT]: 1, [Priority.REGULAR]: 2 };
+      
+      const mostImportantTask = uncompletedTasks.sort((a, b) => {
+        return priorityOrder[a.priority] - priorityOrder[b.priority] || a.dueDate.getTime() - b.dueDate.getTime();
+      })[0];
+
+      let prompt;
+      if (mostImportantTask) {
+        prompt = `Act as a supportive ADHD coach. The user is feeling stuck. Their most important task is "${mostImportantTask.title}". Provide one tiny, physical first step (2-5 minutes) to get started on this specific task. For example, if the task is 'write report', suggest 'open a new document and write just the title'. Your response must be in Hebrew, under 50 words, very friendly, and use emojis.`;
+      } else {
+        prompt = `Act as a supportive ADHD coach. The user has no urgent tasks. Provide one concise, encouraging tip in Hebrew about the importance of rest or celebrating small wins. Your response must be in Hebrew, under 50 words, very friendly, and use emojis.`
+      }
 
       try {
         const response = await generateContentWithFallback(prompt);

@@ -1,20 +1,37 @@
 
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type, Priority } from "@google/genai";
+import { supabase } from './supabase';
 
-// Function to get API keys from local storage
-export const getApiKeys = (): string[] => {
+// Function to get API keys from the user's profile in Supabase
+export const getApiKeys = async (): Promise<string[]> => {
+  if (!supabase) return [];
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
   try {
-    const storedKeys = localStorage.getItem('ff_api_keys_list');
-    return storedKeys ? JSON.parse(storedKeys) : [];
+    const { data, error } = await supabase
+        .from('user_progress')
+        .select('api_keys')
+        .eq('user_id', user.id)
+        .single();
+    
+    if (error || !data) {
+        console.warn("Could not fetch API keys from user profile.", error?.message);
+        return [];
+    }
+    
+    return data.api_keys || [];
+
   } catch (e) {
-    console.error("Could not parse API keys", e);
+    console.error("An unexpected error occurred while fetching API keys", e);
     return [];
   }
 };
 
 // Function to get a working GoogleGenAI instance
 export const getGenAi = async (): Promise<GoogleGenAI | null> => {
-  const keys = getApiKeys();
+  const keys = await getApiKeys();
   if (keys.length === 0) {
     console.warn("No API keys found in settings.");
     return null;
@@ -68,6 +85,11 @@ const taskParserSchema = {
         type: Type.STRING,
         description: 'The calculated due date and time in ISO 8601 format.'
       },
+      priority: {
+        type: Type.STRING,
+        enum: [Priority.URGENT, Priority.IMPORTANT, Priority.REGULAR],
+        description: 'The inferred priority of the task.'
+      },
       reminders: {
         type: Type.OBJECT,
         properties: {
@@ -78,12 +100,13 @@ const taskParserSchema = {
         required: ['dayBefore', 'hourBefore', 'fifteenMinBefore']
       }
     },
-    required: ['title', 'dueDate', 'reminders']
+    required: ['title', 'dueDate', 'priority', 'reminders']
 };
 
 interface ParsedTask {
     title: string;
     dueDate: string;
+    priority: Priority;
     reminders: {
         dayBefore: boolean;
         hourBefore: boolean;
@@ -111,6 +134,7 @@ Based on the command, extract the following:
     - If "יום לפני" (a day before), set \`dayBefore\` to true and others to false.
     - If "15 דקות לפני" (15 minutes before), set \`fifteenMinBefore\` to true and others to false.
     - If no specific reminder is mentioned, set \`dayBefore\`, \`hourBefore\`, and \`fifteenMinBefore\` all to \`true\` as a sensible default.
+4.  **priority**: Infer the task priority. If the command includes words like "דחוף", "בהול", "ASAP", set it to 'URGENT'. If it includes "חשוב", "חייב", set it to 'IMPORTANT'. Otherwise, default to 'REGULAR'.
 `;
 
     try {
