@@ -24,7 +24,7 @@ import HabitReminderSystem from './components/HabitReminderSystem';
 import TaskDetailModal from './components/TaskDetailModal';
 import StruggleModeModal from './components/StruggleModeModal';
 import AiAudioTools from './components/AiAudioTools';
-import { supabase } from './utils/supabase';
+import { supabase, supabaseInitializationError } from './utils/supabase';
 import { Session } from '@supabase/supabase-js';
 import Auth from './components/Auth';
 
@@ -101,6 +101,22 @@ const initialProgress: UserProgress = {
 
 
 const App: React.FC = () => {
+  if (!supabase) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-6 text-center">
+        <div className="bg-white p-8 rounded-2xl shadow-lg border border-red-200 w-full max-w-lg">
+            <h1 className="text-3xl font-bold text-red-800 mb-4">🚨 שגיאת תצורה 🚨</h1>
+            <p className="text-slate-700 mb-6">נראה שיש בעיה בהגדרות האפליקציה שמונעת ממנה לעבוד כראוי.</p>
+            <div className="bg-red-50 text-red-700 p-4 rounded-lg text-start text-sm font-mono">
+                <p className="font-bold">פרטי השגיאה:</p>
+                <p>{supabaseInitializationError}</p>
+            </div>
+            <p className="text-slate-500 mt-6 text-xs">אם אתה בעל האפליקציה, אנא ודא שהגדרת את משתני הסביבה כראוי בסביבת הפריסה (למשל Vercel).</p>
+        </div>
+      </div>
+    );
+  }
+
   const [session, setSession] = useState<Session | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
