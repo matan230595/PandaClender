@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Task, Priority, EnergyLevel, ReminderConfig, CustomReminder, SubTask } from '../types';
-import { CATEGORY_ICONS, ENERGY_LEVEL_ICONS } from '../constants';
+import { Task, ReminderConfig, CustomReminder } from '../types';
 
 interface TaskDetailModalProps {
   task: Task;

@@ -24,7 +24,7 @@ const StruggleModeModal: React.FC<StruggleModeModalProps> = ({ task, onClose }) 
         if (response) {
             try {
                 // Clean potential markdown and parse
-                const jsonText = response.text.replace(/```json|```/g, '').trim();
+                const jsonText = (response.text || '').replace(/```json|```/g, '').trim();
                 const parsed = JSON.parse(jsonText);
                 if (parsed.steps && Array.isArray(parsed.steps)) {
                     setMicroTasks(parsed.steps);

@@ -1,5 +1,4 @@
 
-import React from 'react';
 import { Priority, Task, Habit, Achievement } from './types';
 
 export const PRIORITY_COLOR_CLASSES = {
@@ -22,8 +21,6 @@ export const ENERGY_LEVEL_ICONS = {
   medium: '⚡️',
   high: '🔥'
 };
-
-const defaultReminders = { dayBefore: true, hourBefore: true, fifteenMinBefore: true, custom: null };
 
 export const INITIAL_TASKS: Task[] = [];
 

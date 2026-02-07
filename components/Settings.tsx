@@ -9,8 +9,6 @@ type Status = 'unchecked' | 'checking' | 'valid' | 'invalid';
 type AccordionSection = 'integrations' | 'customization' | 'data' | 'danger';
 
 interface SettingsProps {
-  googleClientId: string;
-  setGoogleClientId: (id: string) => void;
   onGoogleLogin: () => void;
   isGoogleConnected: boolean;
   isConnectingToGoogle: boolean;
@@ -50,7 +48,7 @@ const Accordion: React.FC<{
 );
 
 const Settings: React.FC<SettingsProps> = ({ 
-  googleClientId, setGoogleClientId, onGoogleLogin, isGoogleConnected, isConnectingToGoogle, onLogout, googleUser,
+  onGoogleLogin, isGoogleConnected, isConnectingToGoogle, onLogout, googleUser,
   customColors, setCustomColors, progress, onThemeChange, activeSound, onSoundChange,
   tasks, habits
 }) => {
@@ -135,7 +133,7 @@ const Settings: React.FC<SettingsProps> = ({
   };
   
   const handleColorChange = (priority: Priority, color: string) => {
-    setCustomColors(prev => ({ ...prev, [priority]: color }));
+    setCustomColors((prev: CustomColors) => ({ ...prev, [priority]: color }));
   };
   
   const handleEnableNotifications = async () => {
