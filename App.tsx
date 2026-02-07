@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, Habit, UserProgress, Priority, SubTask, CustomColors, DbTask } from './types';
 import { ACHIEVEMENTS } from './constants';
@@ -19,7 +18,7 @@ import RewardsStore from './components/RewardsStore';
 import AiCoach from './components/AiCoach';
 import BodyDoubling from './components/BodyDoubling';
 import CalendarDayModal from './components/CalendarDayModal';
-import { generateContentWithFallback } from './utils/ai';
+import { generateContentWithFallback, parseTaskFromCommand } from './utils/ai';
 import HabitReminderSystem from './components/HabitReminderSystem';
 import TaskDetailModal from './components/TaskDetailModal';
 import StruggleModeModal from './components/StruggleModeModal';
@@ -161,11 +160,12 @@ const App: React.FC = () => {
 
   // Supabase Auth
   useEffect(() => {
-    supabase!.auth.getSession().then(({ data: { session } }) => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
 
-    const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       isInitialLoadComplete.current = false;
     });
@@ -176,14 +176,15 @@ const App: React.FC = () => {
   // Data Loading
   useEffect(() => {
     const fetchData = async () => {
+      if (!supabase) return;
       setIsLoading(true);
       if (session) {
         isInitialLoadComplete.current = false;
         // Fetch Tasks, Habits, and Progress in parallel
         const [tasksResponse, habitsResponse, progressResponse] = await Promise.all([
-          supabase!.from('tasks').select('*').eq('user_id', session.user.id),
-          supabase!.from('habits').select('*').eq('user_id', session.user.id),
-          supabase!.from('user_progress').select('*').eq('user_id', session.user.id).single()
+          supabase.from('tasks').select('*').eq('user_id', session.user.id),
+          supabase.from('habits').select('*').eq('user_id', session.user.id),
+          supabase.from('user_progress').select('*').eq('user_id', session.user.id).single()
         ]);
 
         // Process Tasks
@@ -222,9 +223,9 @@ const App: React.FC = () => {
   // Data Saving for Progress
   useEffect(() => {
     const saveProgress = async () => {
-        if (session && isInitialLoadComplete.current) {
+        if (session && isInitialLoadComplete.current && supabase) {
             const dbProgress = toDbProgress(progress, session.user.id);
-            const { error } = await supabase!.from('user_progress').upsert(dbProgress);
+            const { error } = await supabase.from('user_progress').upsert(dbProgress);
             if(error) console.error("Error saving progress:", error);
         }
     };
@@ -293,7 +294,7 @@ const App: React.FC = () => {
   };
   
   const handleAddTask = async (newTaskData: Omit<Task, 'id' | 'creationDate' | 'completed' | 'user_id'>) => {
-    if (!session) return;
+    if (!session || !supabase) return;
     const fullNewTask: Task = {
         ...newTaskData,
         id: '', // Will be set by DB
@@ -302,7 +303,7 @@ const App: React.FC = () => {
         user_id: session.user.id
     };
     
-    const { data, error } = await supabase!
+    const { data, error } = await supabase
         .from('tasks')
         .insert(toDbTask(fullNewTask))
         .select()
@@ -316,9 +317,33 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAddTaskFromNaturalLanguage = async (command: string) => {
+    try {
+      const parsedTask = await parseTaskFromCommand(command);
+      if (!parsedTask) {
+        throw new Error("לא הצלחתי להבין את הבקשה. נסה לפרט יותר.");
+      }
+      
+      const newTaskData = {
+        title: parsedTask.title,
+        dueDate: new Date(parsedTask.dueDate),
+        reminders: { ...parsedTask.reminders, custom: null },
+        priority: Priority.REGULAR, // Default priority
+        subTasks: [],
+        category: 'אישי' as const, // Default category
+      };
+
+      await handleAddTask(newTaskData);
+      
+    } catch (error) {
+      console.error("Error processing natural language command:", error);
+      throw error;
+    }
+  };
+
   const handleToggleTaskCompletion = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
+    if (!task || !supabase) return;
     
     const isNowCompleted = !task.completed;
     const updatedTask = { 
@@ -328,7 +353,7 @@ const App: React.FC = () => {
         snoozedUntil: undefined
     };
     
-    const { error } = await supabase!
+    const { error } = await supabase
         .from('tasks')
         .update(toDbTask(updatedTask))
         .eq('id', taskId);
@@ -356,14 +381,14 @@ const App: React.FC = () => {
   
   const handleSnoozeTask = async (taskId: string, minutes: number) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
+    if (!task || !supabase) return;
 
     const now = Date.now();
     const newDueDate = new Date(now + minutes * 60000);
     const snoozedUntil = now + minutes * 60000;
     const updatedTask = { ...task, dueDate: newDueDate, snoozedUntil };
 
-    const { error } = await supabase!
+    const { error } = await supabase
         .from('tasks')
         .update({ 
             due_date: newDueDate.toISOString(),
@@ -380,7 +405,7 @@ const App: React.FC = () => {
 
   const handleSubTaskToggle = async (taskId: string, subTaskId: string) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
+    if (!task || !supabase) return;
 
     const newSubTasks = task.subTasks.map(st => 
         st.id === subTaskId ? { ...st, completed: !st.completed } : st
@@ -388,7 +413,7 @@ const App: React.FC = () => {
     const allSubTasksNowComplete = newSubTasks.length > 0 && newSubTasks.every(st => st.completed);
     const updatedTask = { ...task, subTasks: newSubTasks, completed: allSubTasksNowComplete };
 
-    const { error } = await supabase!
+    const { error } = await supabase
         .from('tasks')
         .update({ sub_tasks: newSubTasks, completed: allSubTasksNowComplete })
         .eq('id', taskId);
@@ -409,13 +434,13 @@ const App: React.FC = () => {
   const handleAddSubTask = async (taskId: string, subTaskTitle: string) => {
     if (!subTaskTitle.trim()) return;
     const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
+    if (!task || !supabase) return;
 
     const newSubTask: SubTask = { id: `${taskId}-${Math.random().toString(36).substr(2, 9)}`, title: subTaskTitle.trim(), completed: false };
     const newSubTasks = [...task.subTasks, newSubTask];
     const updatedTask = { ...task, subTasks: newSubTasks, completed: false };
 
-    const { error } = await supabase!
+    const { error } = await supabase
         .from('tasks')
         .update({ sub_tasks: newSubTasks, completed: false })
         .eq('id', taskId);
@@ -429,7 +454,7 @@ const App: React.FC = () => {
   
   const handleToggleHabit = async (habitId: string) => {
     const habit = habits.find(h => h.id === habitId);
-    if (!habit) return;
+    if (!habit || !supabase) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const isCompletedToday = habit.completedDays.includes(todayStr);
@@ -439,7 +464,7 @@ const App: React.FC = () => {
     
     const updatedHabit = { ...habit, completedDays: newCompletedDays };
 
-    const { error } = await supabase!
+    const { error } = await supabase
         .from('habits')
         .update({ completed_days: newCompletedDays })
         .eq('id', habitId);
@@ -458,7 +483,7 @@ const App: React.FC = () => {
   };
 
   const handleAddHabit = async (habitData: Omit<Habit, 'id' | 'completedDays'>) => {
-    if (!session) return;
+    if (!session || !supabase) return;
     const dbHabit = {
         title: habitData.title,
         icon: habitData.icon,
@@ -466,7 +491,7 @@ const App: React.FC = () => {
         user_id: session.user.id,
         completed_days: [],
     };
-    const { data, error } = await supabase!
+    const { data, error } = await supabase
         .from('habits')
         .insert(dbHabit)
         .select()
@@ -487,7 +512,8 @@ const App: React.FC = () => {
   };
 
   const handleUpdateHabit = async (updatedHabit: Habit) => {
-      const { error } = await supabase!
+    if (!supabase) return;
+      const { error } = await supabase
         .from('habits')
         .update({
             title: updatedHabit.title,
@@ -504,7 +530,8 @@ const App: React.FC = () => {
   };
 
   const handleDeleteHabit = async (habitId: string) => {
-    const { error } = await supabase!.from('habits').delete().eq('id', habitId);
+    if (!supabase) return;
+    const { error } = await supabase.from('habits').delete().eq('id', habitId);
     if (error) {
         console.error("Error deleting habit:", error);
     } else {
@@ -585,15 +612,17 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
+    if (!supabase) return;
     isInitialLoadComplete.current = false;
-    const { error } = await supabase!.auth.signOut();
+    const { error } = await supabase.auth.signOut();
     if (error) console.error('Error logging out:', error);
   };
 
   const activeFocusTask = tasks.find(t => t.id === focusTaskId);
 
   const handleUpdateTask = async (updatedTask: Task) => {
-    const { error } = await supabase!
+    if (!supabase) return;
+    const { error } = await supabase
         .from('tasks')
         .update(toDbTask(updatedTask))
         .eq('id', updatedTask.id);
@@ -609,7 +638,8 @@ const App: React.FC = () => {
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    const { error } = await supabase!.from('tasks').delete().eq('id', taskId);
+    if (!supabase) return;
+    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
     if (error) {
         console.error("Error deleting task:", error);
     } else {
@@ -707,7 +737,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-            {mainView === 'dashboard' && <Dashboard tasks={tasks} onSendEmail={sendEmailReport} isProcessing={isSyncing} onOpenAiCoach={() => setShowAiCoach(true)} onOpenBodyDoubling={() => setShowBodyDoubling(true)} onOpenAiAudioTools={() => setShowAiAudioTools(true)} onComplete={handleToggleTaskCompletion} onViewTask={setViewingTask} />}
+            {mainView === 'dashboard' && <Dashboard tasks={tasks} onSendEmail={sendEmailReport} isProcessing={isSyncing} onOpenAiCoach={() => setShowAiCoach(true)} onOpenBodyDoubling={() => setShowBodyDoubling(true)} onOpenAiAudioTools={() => setShowAiAudioTools(true)} onComplete={handleToggleTaskCompletion} onViewTask={setViewingTask} onAddTaskFromNaturalLanguage={handleAddTaskFromNaturalLanguage} />}
             {mainView === 'calendar' && (
               <div className="flex flex-col gap-6">
                 <div className="flex gap-2 mb-2 bg-slate-100 p-1 rounded-xl w-fit mx-auto">
@@ -738,7 +768,7 @@ const App: React.FC = () => {
             {mainView === 'stats' && <ProgressStats tasks={tasks} progress={progress} />}
             {mainView === 'rewards' && <RewardsStore progress={progress} onPurchase={handlePurchase} activeTheme={progress.activeTheme} onThemeChange={handleThemeChange} />}
             {mainView === 'settings' && <Settings 
-                onGoogleLogin={() => supabase!.auth.signInWithOAuth({ provider: 'google' })} 
+                onGoogleLogin={() => supabase && supabase.auth.signInWithOAuth({ provider: 'google' })} 
                 isGoogleConnected={!!session} onLogout={handleLogout}
                 isConnectingToGoogle={false}
                 googleUser={session?.user} 

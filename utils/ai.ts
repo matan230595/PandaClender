@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 
 // Function to get API keys from local storage
 export const getApiKeys = (): string[] => {
@@ -55,4 +55,82 @@ export async function generateContentWithFallback(
      console.error("generateContentWithFallback failed", error);
      throw error;
   }
+}
+
+const taskParserSchema = {
+    type: Type.OBJECT,
+    properties: {
+      title: {
+        type: Type.STRING,
+        description: 'The inferred title of the task.'
+      },
+      dueDate: {
+        type: Type.STRING,
+        description: 'The calculated due date and time in ISO 8601 format.'
+      },
+      reminders: {
+        type: Type.OBJECT,
+        properties: {
+          dayBefore: { type: Type.BOOLEAN },
+          hourBefore: { type: Type.BOOLEAN },
+          fifteenMinBefore: { type: Type.BOOLEAN },
+        },
+        required: ['dayBefore', 'hourBefore', 'fifteenMinBefore']
+      }
+    },
+    required: ['title', 'dueDate', 'reminders']
+};
+
+interface ParsedTask {
+    title: string;
+    dueDate: string;
+    reminders: {
+        dayBefore: boolean;
+        hourBefore: boolean;
+        fifteenMinBefore: boolean;
+    };
+}
+
+export async function parseTaskFromCommand(command: string): Promise<ParsedTask | null> {
+    const ai = await getGenAi();
+    if (!ai) {
+        throw new Error("לא הוגדר מפתח AI. אנא הגדר אותו בהגדרות.");
+    }
+
+    const prompt = `You are a task management assistant for an app called PandaClender. Your job is to parse a user's command written in Hebrew and extract task details.
+The current date and time is: ${new Date().toISOString()}.
+You MUST return the response in a valid JSON format according to the provided schema.
+
+User command: "${command}"
+
+Based on the command, extract the following:
+1.  **title**: The title of the task. Infer it from the command (e.g., "לקבוע תור לרופא" -> "לקבוע תור לרופא"). If no action is mentioned, use a generic title like "משימה".
+2.  **dueDate**: The exact due date and time in ISO 8601 format. Calculate relative dates like "מחר" (tomorrow), "בעוד שעתיים" (in 2 hours), etc., based on the current date provided. If no time is specified, default to a reasonable time like 09:00 local time.
+3.  **reminders**: An object representing the reminder settings.
+    - If the user says "תזכיר שעה לפני" (remind an hour before), set \`hourBefore\` to true and others to false.
+    - If "יום לפני" (a day before), set \`dayBefore\` to true and others to false.
+    - If "15 דקות לפני" (15 minutes before), set \`fifteenMinBefore\` to true and others to false.
+    - If no specific reminder is mentioned, set \`dayBefore\`, \`hourBefore\`, and \`fifteenMinBefore\` all to \`true\` as a sensible default.
+`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: taskParserSchema,
+            },
+        });
+        
+        if (response && response.text) {
+            const jsonText = response.text.replace(/```json|```/g, '').trim();
+            const parsed = JSON.parse(jsonText);
+            return parsed as ParsedTask;
+        }
+        return null;
+    } catch (error) {
+        console.error("AI task parsing failed", error);
+        throw new Error("ה-AI לא הצליח לעבד את הבקשה. ייתכן שהמפתח אינו תקין.");
+    }
 }

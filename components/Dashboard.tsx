@@ -12,6 +12,7 @@ interface DashboardProps {
   onOpenAiAudioTools: () => void;
   onComplete: (id: string) => void;
   onViewTask: (task: Task) => void;
+  onAddTaskFromNaturalLanguage: (command: string) => Promise<void>;
 }
 
 const CountdownTimer: React.FC<{ snoozedUntil: number }> = ({ snoozedUntil }) => {
@@ -38,9 +39,57 @@ const CountdownTimer: React.FC<{ snoozedUntil: number }> = ({ snoozedUntil }) =>
     return <span className="font-mono text-sm font-bold text-slate-500">{timeLeft}</span>;
 };
 
+interface QuickAddTaskProps {
+  onSubmitCommand: (command: string) => Promise<void>;
+}
+
+const QuickAddTask: React.FC<QuickAddTaskProps> = ({ onSubmitCommand }) => {
+  const [command, setCommand] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!command.trim()) return;
+
+    setIsProcessing(true);
+    setError('');
+
+    try {
+        await onSubmitCommand(command);
+        setCommand(''); // Clear on success
+    } catch (err: any) {
+        setError(err.message || 'שגיאה לא ידועה התרחשה.');
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2 mb-4">
+            ✨ הוספה מהירה עם AI
+        </h2>
+        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">
+            <input 
+                type="text"
+                value={command}
+                onChange={e => setCommand(e.target.value)}
+                placeholder="למשל: לקבוע תור לרופא מחר ב-11:00"
+                className="flex-grow p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-200"
+            />
+            <button type="submit" disabled={isProcessing || !command.trim()} className="px-8 py-4 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center">
+                {isProcessing ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'הוסף משימה'}
+            </button>
+        </form>
+        {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+    </div>
+  )
+};
+
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-  tasks, onSendEmail, isProcessing, onOpenAiCoach, onOpenBodyDoubling, onOpenAiAudioTools, onComplete, onViewTask
+  tasks, onSendEmail, isProcessing, onOpenAiCoach, onOpenBodyDoubling, onOpenAiAudioTools, onComplete, onViewTask, onAddTaskFromNaturalLanguage
 }) => {
   const [currentEnergy, setCurrentEnergy] = useState<EnergyLevel>('medium');
 
@@ -75,6 +124,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
+      <QuickAddTask onSubmitCommand={onAddTaskFromNaturalLanguage} />
+      
       {/* Top 3 Tasks */}
       <div className="bg-white p-6 rounded-3xl border border-indigo-100 shadow-sm">
          <h2 className="text-xl font-bold text-indigo-900 flex items-center gap-2 mb-4">

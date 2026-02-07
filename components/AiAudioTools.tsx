@@ -1,8 +1,7 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { getGenAi } from '../utils/ai';
 import { encode, decode, decodeAudioData, blobToBase64 } from '../utils/audio';
-import { GoogleGenAI, Modality, LiveServerMessage, Blob as GenAiBlob } from "@google/genai";
+import { GoogleGenAI, Modality, LiveServerMessage, Blob as GenAiBlob, LiveSession } from "@google/genai";
 
 type Tab = 'conversation' | 'transcription' | 'tts';
 
@@ -79,14 +78,34 @@ const AiAudioTools: React.FC<AiAudioToolsProps> = ({ onClose }) => {
 const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
     const [isSessionActive, setIsSessionActive] = useState(false);
     const [transcriptionHistory, setTranscriptionHistory] = useState<{ speaker: 'user' | 'model'; text: string }[]>([]);
-    const sessionPromise = useRef<Promise<any> | null>(null);
+    const sessionPromise = useRef<Promise<LiveSession> | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
 
-    let nextStartTime = 0;
-    const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-    const sources = new Set<AudioBufferSourceNode>();
+    const sources = useRef(new Set<AudioBufferSourceNode>()).current;
+    const outputAudioContext = useRef(new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 })).current;
+
+    const stopSession = useCallback(() => {
+        setIsSessionActive(false);
+        if (sessionPromise.current) {
+            sessionPromise.current.then(session => session.close()).catch(e => console.error("Error closing session:", e));
+            sessionPromise.current = null;
+        }
+        streamRef.current?.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+        
+        scriptProcessorRef.current?.disconnect();
+        scriptProcessorRef.current = null;
+        
+        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+            audioContextRef.current.close().catch(e => console.error("Error closing audio context:", e));
+        }
+        audioContextRef.current = null;
+
+        sources.forEach(source => source.stop());
+        sources.clear();
+    }, [sources]);
 
     const startSession = async () => {
         setIsSessionActive(true);
@@ -94,6 +113,7 @@ const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
 
         let currentInputTranscription = '';
         let currentOutputTranscription = '';
+        let nextStartTime = 0;
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -109,7 +129,7 @@ const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
                         const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
                         scriptProcessorRef.current = scriptProcessor;
 
-                        scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+                        scriptProcessor.onaudioprocess = (audioProcessingEvent: AudioProcessingEvent) => {
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
                             const l = inputData.length;
                             const int16 = new Int16Array(l);
@@ -125,8 +145,6 @@ const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
                             });
                         };
                         source.connect(scriptProcessor);
-                        // Do NOT connect to destination, to avoid audio feedback loop
-                        // scriptProcessor.connect(inputAudioContext.destination);
                     },
                     onmessage: async (message: LiveServerMessage) => {
                         if (message.serverContent?.outputTranscription) {
@@ -170,30 +188,13 @@ const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
             setIsSessionActive(false);
         }
     };
-
-    const stopSession = () => {
-        setIsSessionActive(false);
-        if (sessionPromise.current) {
-            sessionPromise.current.then(session => session.close());
-            sessionPromise.current = null;
-        }
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
-        }
-        if(scriptProcessorRef.current) {
-            scriptProcessorRef.current.disconnect();
-            scriptProcessorRef.current = null;
-        }
-        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-            audioContextRef.current.close();
-            audioContextRef.current = null;
-        }
-        sources.forEach(source => source.stop());
-        sources.clear();
-    };
     
-    useEffect(() => stopSession, []); // Cleanup on unmount
+    useEffect(() => {
+        // This is the cleanup function that will be called when the component unmounts.
+        return () => {
+            stopSession();
+        };
+    }, [stopSession]);
 
     return (
         <div className="p-6 flex flex-col h-full gap-4">
@@ -303,7 +304,7 @@ const TtsTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
             });
             const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
-                if (!audioContextRef.current) {
+                if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
                     audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
                 }
                 const audioBuffer = await decodeAudioData(decode(base64Audio), audioContextRef.current, 24000, 1);
