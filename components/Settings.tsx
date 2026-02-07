@@ -162,7 +162,7 @@ const Settings: React.FC<SettingsProps> = ({
   }
 
   const handleHabitTimeChange = (partOfDay: 'morning' | 'noon' | 'evening', time: string) => {
-    setHabitReminderTimes(prev => ({ ...prev, [partOfDay]: time }));
+    setHabitReminderTimes((prev: { morning: string; noon: string; evening: string; }) => ({ ...prev, [partOfDay]: time }));
   };
 
   const handleExportTasks = () => {

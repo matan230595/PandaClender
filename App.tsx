@@ -707,7 +707,6 @@ const App: React.FC = () => {
             {mainView === 'stats' && <ProgressStats tasks={tasks} progress={progress} />}
             {mainView === 'rewards' && <RewardsStore progress={progress} onPurchase={handlePurchase} activeTheme={progress.activeTheme} onThemeChange={handleThemeChange} />}
             {mainView === 'settings' && <Settings 
-                googleClientId={''} setGoogleClientId={() => {}} 
                 onGoogleLogin={() => supabase.auth.signInWithOAuth({ provider: 'google' })} 
                 isGoogleConnected={!!session} onLogout={handleLogout}
                 isConnectingToGoogle={false}
