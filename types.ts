@@ -61,6 +61,7 @@ export interface UserProgress {
     type: 'doublePoints';
     expires: number; // Timestamp
   } | null;
+  apiKeys: string[];
 }
 
 export interface Achievement {

@@ -72,6 +72,7 @@ const toDbProgress = (progress: UserProgress, userId: string) => ({
     purchased_sound_packs: progress.purchasedSoundPacks,
     purchased_confetti_packs: progress.purchasedConfettiPacks,
     active_power_up: progress.activePowerUp,
+    api_keys: progress.apiKeys,
 });
 
 const fromDbProgress = (dbProgress: any): UserProgress => ({
@@ -84,6 +85,7 @@ const fromDbProgress = (dbProgress: any): UserProgress => ({
     purchasedSoundPacks: dbProgress.purchased_sound_packs,
     purchasedConfettiPacks: dbProgress.purchased_confetti_packs,
     activePowerUp: dbProgress.active_power_up,
+    apiKeys: dbProgress.api_keys || [],
 });
 
 const initialProgress: UserProgress = {
@@ -96,6 +98,7 @@ const initialProgress: UserProgress = {
     purchasedSoundPacks: ['none'],
     purchasedConfettiPacks: [],
     activePowerUp: null,
+    apiKeys: [],
 };
 
 const LoadingScreen: React.FC = () => (
@@ -188,18 +191,22 @@ const App: React.FC = () => {
         ]);
 
         // Process Tasks
-        if (tasksResponse.error) console.error('Error fetching tasks:', tasksResponse.error);
+        if (tasksResponse.error) console.error('Error fetching tasks:', tasksResponse.error.message);
         else setTasks((tasksResponse.data as DbTask[] || []).map(fromDbTask));
 
         // Process Habits
-        if (habitsResponse.error) console.error('Error fetching habits:', habitsResponse.error);
+        if (habitsResponse.error) console.error('Error fetching habits:', habitsResponse.error.message);
         else setHabits((habitsResponse.data || []).map(h => ({
                 id: h.id, title: h.title, icon: h.icon, timeOfDay: h.time_of_day, completedDays: h.completed_days || []
              })));
         
         // Process Progress
         if (progressResponse.error && progressResponse.error.code !== 'PGRST116') { // Ignore 'exact one row' error
-            console.error('Error fetching progress:', progressResponse.error);
+            console.error('Error fetching progress:', progressResponse.error.message);
+            // This is a critical error to inform the user about.
+            if (progressResponse.error.message.includes("schema cache")) {
+                 alert("שגיאה חמורה: נראה שמבנה מסד הנתונים אינו מעודכן. אנא פנה ל-Supabase -> API -> ולחץ על 'Reload schema'.");
+            }
         } else if (progressResponse.data) {
             setProgress(fromDbProgress(progressResponse.data));
         } else {
@@ -226,7 +233,7 @@ const App: React.FC = () => {
         if (session && isInitialLoadComplete.current && supabase) {
             const dbProgress = toDbProgress(progress, session.user.id);
             const { error } = await supabase.from('user_progress').upsert(dbProgress);
-            if(error) console.error("Error saving progress:", error);
+            if(error) console.error("Error saving progress:", error.message);
         }
     };
     
@@ -305,12 +312,13 @@ const App: React.FC = () => {
     
     const { data, error } = await supabase
         .from('tasks')
-        .insert(toDbTask(fullNewTask))
+        .insert([toDbTask(fullNewTask)])
         .select()
         .single();
         
     if (error) {
-        console.error("Error adding task:", error);
+        console.error("Error adding task:", error.message);
+        alert(`שגיאה בהוספת משימה: ${error.message}`);
     } else if (data) {
         setTasks(prev => [fromDbTask(data as DbTask), ...prev]);
         triggerConfetti();
@@ -328,14 +336,14 @@ const App: React.FC = () => {
         title: parsedTask.title,
         dueDate: new Date(parsedTask.dueDate),
         reminders: { ...parsedTask.reminders, custom: null },
-        priority: Priority.REGULAR, // Default priority
+        priority: parsedTask.priority || Priority.REGULAR,
         subTasks: [],
         category: 'אישי' as const, // Default category
       };
 
       await handleAddTask(newTaskData);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing natural language command:", error);
       throw error;
     }
@@ -359,7 +367,7 @@ const App: React.FC = () => {
         .eq('id', taskId);
 
     if (error) {
-        console.error("Error updating task completion:", error);
+        console.error("Error updating task completion:", error.message);
     } else {
         setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
         if (isNowCompleted) {
@@ -397,7 +405,7 @@ const App: React.FC = () => {
         .eq('id', taskId);
     
     if (error) {
-        console.error("Error snoozing task:", error);
+        console.error("Error snoozing task:", error.message);
     } else {
         setTasks(prev => prev.map(t => (t.id === taskId ? updatedTask : t)));
     }
@@ -419,7 +427,7 @@ const App: React.FC = () => {
         .eq('id', taskId);
 
     if (error) {
-        console.error("Error updating subtask:", error);
+        console.error("Error updating subtask:", error.message);
     } else {
         setTasks(prevTasks => prevTasks.map(t => t.id === taskId ? updatedTask : t));
         if (allSubTasksNowComplete && !task.completed) {
@@ -446,7 +454,7 @@ const App: React.FC = () => {
         .eq('id', taskId);
     
     if (error) {
-        console.error("Error adding subtask:", error);
+        console.error("Error adding subtask:", error.message);
     } else {
         setTasks(prevTasks => prevTasks.map(t => t.id === taskId ? updatedTask : t));
     }
@@ -470,7 +478,7 @@ const App: React.FC = () => {
         .eq('id', habitId);
 
     if (error) {
-        console.error("Error updating habit:", error);
+        console.error("Error updating habit:", error.message);
     } else {
         setHabits(prev => prev.map(h => (h.id === habitId ? updatedHabit : h)));
         if (!isCompletedToday) {
@@ -493,12 +501,13 @@ const App: React.FC = () => {
     };
     const { data, error } = await supabase
         .from('habits')
-        .insert(dbHabit)
+        .insert([dbHabit])
         .select()
         .single();
 
     if (error) {
-        console.error("Error adding habit:", error);
+        console.error("Error adding habit:", error.message);
+         alert(`שגיאה בהוספת הרגל: ${error.message}`);
     } else if (data) {
         const frontendHabit: Habit = {
             id: data.id,
@@ -523,7 +532,7 @@ const App: React.FC = () => {
         .eq('id', updatedHabit.id);
     
     if (error) {
-        console.error("Error updating habit:", error);
+        console.error("Error updating habit:", error.message);
     } else {
         setHabits(prev => prev.map(h => h.id === updatedHabit.id ? updatedHabit : h));
     }
@@ -533,7 +542,7 @@ const App: React.FC = () => {
     if (!supabase) return;
     const { error } = await supabase.from('habits').delete().eq('id', habitId);
     if (error) {
-        console.error("Error deleting habit:", error);
+        console.error("Error deleting habit:", error.message);
     } else {
         setHabits(prev => prev.filter(h => h.id !== habitId));
     }
@@ -585,6 +594,12 @@ const App: React.FC = () => {
   const handleSoundChange = (soundId: string) => {
     setActiveSound(soundId);
   };
+  
+  const handleUpdateApiKeys = async (newKeys: string[]) => {
+    if (!session || !supabase) return;
+    setProgress(prev => ({...prev, apiKeys: newKeys}));
+    // The useEffect for progress saving will automatically sync this to Supabase.
+  };
 
   const sendEmailReport = async (type: 'day' | 'week') => {
     setIsSyncing(type);
@@ -615,7 +630,7 @@ const App: React.FC = () => {
     if (!supabase) return;
     isInitialLoadComplete.current = false;
     const { error } = await supabase.auth.signOut();
-    if (error) console.error('Error logging out:', error);
+    if (error) console.error('Error logging out:', error.message);
   };
 
   const activeFocusTask = tasks.find(t => t.id === focusTaskId);
@@ -628,7 +643,7 @@ const App: React.FC = () => {
         .eq('id', updatedTask.id);
 
     if (error) {
-        console.error("Error updating task:", error);
+        console.error("Error updating task:", error.message);
     } else {
         setTasks(tasks.map(t => (t.id === updatedTask.id ? updatedTask : t)));
         if(viewingTask?.id === updatedTask.id) {
@@ -641,7 +656,7 @@ const App: React.FC = () => {
     if (!supabase) return;
     const { error } = await supabase.from('tasks').delete().eq('id', taskId);
     if (error) {
-        console.error("Error deleting task:", error);
+        console.error("Error deleting task:", error.message);
     } else {
         setTasks(tasks.filter(t => t.id !== taskId));
         if(viewingTask?.id === taskId) {
@@ -779,6 +794,7 @@ const App: React.FC = () => {
                 onSoundChange={handleSoundChange}
                 tasks={tasks}
                 habits={habits}
+                onUpdateApiKeys={handleUpdateApiKeys}
             />}
           </div>
         </main>

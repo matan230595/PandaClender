@@ -203,6 +203,10 @@ const App: React.FC = () => {
         // Process Progress
         if (progressResponse.error && progressResponse.error.code !== 'PGRST116') { // Ignore 'exact one row' error
             console.error('Error fetching progress:', progressResponse.error.message);
+            // This is a critical error to inform the user about.
+            if (progressResponse.error.message.includes("schema cache")) {
+                 alert("שגיאה חמורה: נראה שמבנה מסד הנתונים אינו מעודכן. אנא פנה לתמיכה או נסה לרענן את הסכמה ב-Supabase.");
+            }
         } else if (progressResponse.data) {
             setProgress(fromDbProgress(progressResponse.data));
         } else {
@@ -314,6 +318,7 @@ const App: React.FC = () => {
         
     if (error) {
         console.error("Error adding task:", error.message);
+        alert(`שגיאה בהוספת משימה: ${error.message}`);
     } else if (data) {
         setTasks(prev => [fromDbTask(data as DbTask), ...prev]);
         triggerConfetti();
@@ -338,7 +343,7 @@ const App: React.FC = () => {
 
       await handleAddTask(newTaskData);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing natural language command:", error);
       throw error;
     }
@@ -502,6 +507,7 @@ const App: React.FC = () => {
 
     if (error) {
         console.error("Error adding habit:", error.message);
+         alert(`שגיאה בהוספת הרגל: ${error.message}`);
     } else if (data) {
         const frontendHabit: Habit = {
             id: data.id,

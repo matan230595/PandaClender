@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Task, Habit, Priority, CustomColors, UserProgress } from '../lib/types';
 import { GoogleGenAI } from "@google/genai";
@@ -87,7 +86,7 @@ const Settings: React.FC<SettingsProps> = ({
 
     // Test any unchecked keys
     (progress.apiKeys || []).forEach(key => {
-        if (!keyStatuses[key]) {
+        if (!keyStatuses[key] || keyStatuses[key] === 'unchecked') {
             testApiKey(key);
         }
     });
