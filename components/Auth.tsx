@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { supabase } from '../utils/supabase';
 
@@ -32,11 +31,9 @@ const Auth: React.FC = () => {
         setMessage('');
 
         try {
-            const authFunction = isSignUp 
-                ? supabase.auth.signUp 
-                : supabase.auth.signInWithPassword;
-            
-            const { error } = await authFunction({ email, password });
+            const { error } = isSignUp
+              ? await supabase.auth.signUp({ email, password })
+              : await supabase.auth.signInWithPassword({ email, password });
 
             if (error) {
                 setError(error.message);
