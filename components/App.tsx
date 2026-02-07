@@ -73,6 +73,7 @@ const toDbProgress = (progress: UserProgress, userId: string) => ({
     purchased_confetti_packs: progress.purchasedConfettiPacks,
     active_power_up: progress.activePowerUp,
     api_keys: progress.apiKeys,
+    updated_at: new Date().toISOString(),
 });
 
 const fromDbProgress = (dbProgress: any): UserProgress => ({
@@ -80,11 +81,11 @@ const fromDbProgress = (dbProgress: any): UserProgress => ({
     level: dbProgress.level,
     streak: dbProgress.streak,
     achievements: dbProgress.achievements,
-    purchasedThemes: dbProgress.purchased_themes,
-    activeTheme: dbProgress.active_theme,
-    purchasedSoundPacks: dbProgress.purchased_sound_packs,
-    purchasedConfettiPacks: dbProgress.purchased_confetti_packs,
-    activePowerUp: dbProgress.active_power_up,
+    purchasedThemes: dbProgress.purchased_themes || ['default'],
+    activeTheme: dbProgress.active_theme || 'default',
+    purchasedSoundPacks: dbProgress.purchased_sound_packs || ['none'],
+    purchasedConfettiPacks: dbProgress.purchased_confetti_packs || [],
+    activePowerUp: dbProgress.active_power_up || null,
     apiKeys: dbProgress.api_keys || [],
 });
 
@@ -101,7 +102,7 @@ const initialProgress: UserProgress = {
     apiKeys: [],
 };
 
-const LoadingScreen: React.FC<{ message?: string }> = ({ message = "טוען..." }) => (
+const LoadingScreen: React.FC<{ message?: string }> = ({ message = "טוען נתונים..." }) => (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
         <p className="mt-4 font-bold text-slate-500">{message}</p>
@@ -120,7 +121,7 @@ const App: React.FC = () => {
                 <p className="font-bold">פרטי השגיאה:</p>
                 <p>{supabaseInitializationError}</p>
             </div>
-            <p className="text-slate-500 mt-6 text-xs">אם אתה בעל האפליקציה, אנא ודא שהגדרת את משתני הסביבה כראוי בסביבת הפריסה (למשל Vercel).</p>
+            <p className="text-slate-500 mt-6 text-xs">אנא ודא שהגדרת את VITE_SUPABASE_URL ו-VITE_SUPABASE_ANON_KEY.</p>
         </div>
       </div>
     );
@@ -128,7 +129,6 @@ const App: React.FC = () => {
 
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [schemaError, setSchemaError] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [progress, setProgress] = useState<UserProgress>(initialProgress);
@@ -179,78 +179,78 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Save to LocalStorage (Persistence)
+  useEffect(() => {
+    if (!session) return;
+    const key = `ff_state_${session.user.id}`;
+    const payload = { tasks, habits, progress, savedAt: Date.now() };
+    try {
+      localStorage.setItem(key, JSON.stringify(payload));
+    } catch (e) {
+      console.warn("Failed saving local state", e);
+    }
+  }, [session, tasks, habits, progress]);
+
   // Data Loading
   useEffect(() => {
     const fetchData = async () => {
       if (!supabase) return;
       setIsLoading(true);
-      setSchemaError(false);
-
       if (session) {
         isInitialLoadComplete.current = false;
 
-        // Load local fallback first (instant UI, then Supabase overrides)
+        // Load from LocalStorage (Offline-First)
         try {
-          const key = `ff_state_${session.user.id}`;
-          const raw = localStorage.getItem(key);
+          const localKey = `ff_state_${session.user.id}`;
+          const raw = localStorage.getItem(localKey);
           if (raw) {
             const parsed = JSON.parse(raw);
-            if (parsed?.tasks) {
-              setTasks(parsed.tasks.map((t: any) => ({
-                ...t,
-                dueDate: new Date(t.dueDate),
-                creationDate: new Date(t.creationDate)
-              })));
-            }
+            if (parsed?.tasks) setTasks(parsed.tasks.map((t: any) => ({ ...t, dueDate: new Date(t.dueDate), creationDate: new Date(t.creationDate) })));
             if (parsed?.habits) setHabits(parsed.habits);
             if (parsed?.progress) setProgress(parsed.progress);
           }
         } catch (e) {
-          console.warn("Failed loading local state", e);
+          console.warn("Local storage fallback load failed", e);
         }
 
-        try {
-            // Fetch Tasks, Habits, and Progress in parallel from Supabase
-            const [tasksResponse, habitsResponse, progressResponse] = await Promise.all([
-              supabase.from('tasks').select('*').eq('user_id', session.user.id),
-              supabase.from('habits').select('*').eq('user_id', session.user.id),
-              supabase.from('user_profile_progress').select('*').eq('user_id', session.user.id).single()
-            ]);
+        // Fetch Tasks, Habits, and Progress in parallel
+        // Use user_profile_progress for profile data
+        const [tasksResponse, habitsResponse, progressResponse] = await Promise.all([
+          supabase.from('tasks').select('*').eq('user_id', session.user.id),
+          supabase.from('habits').select('*').eq('user_id', session.user.id),
+          supabase.from('user_profile_progress').select('*').eq('user_id', session.user.id).single()
+        ]);
 
-            // Check for schema cache errors
-            if (
-                (tasksResponse.error && tasksResponse.error.message.includes("schema cache")) ||
-                (habitsResponse.error && habitsResponse.error.message.includes("schema cache")) ||
-                (progressResponse.error && progressResponse.error.message.includes("schema cache"))
-            ) {
-                setSchemaError(true);
-                setIsLoading(false);
-                return;
-            }
+        // Process Tasks
+        if (tasksResponse.error) console.error('Error fetching tasks:', tasksResponse.error.message);
+        else setTasks((tasksResponse.data as DbTask[] || []).map(fromDbTask));
 
-            // Process Tasks
-            if (tasksResponse.error) console.error('Error fetching tasks:', tasksResponse.error.message);
-            else setTasks((tasksResponse.data as DbTask[] || []).map(fromDbTask));
-
-            // Process Habits
-            if (habitsResponse.error) console.error('Error fetching habits:', habitsResponse.error.message);
-            else setHabits((habitsResponse.data || []).map(h => ({
-                    id: h.id, title: h.title, icon: h.icon, timeOfDay: h.time_of_day, completedDays: h.completed_days || []
-                 })));
-            
-            // Process Progress
-            if (progressResponse.error && progressResponse.error.code !== 'PGRST116') {
-                console.error('Error fetching progress:', progressResponse.error.message);
-            } else if (progressResponse.data) {
-                setProgress(fromDbProgress(progressResponse.data));
+        // Process Habits
+        if (habitsResponse.error) console.error('Error fetching habits:', habitsResponse.error.message);
+        else setHabits((habitsResponse.data || []).map(h => ({
+                id: h.id, title: h.title, icon: h.icon, timeOfDay: h.time_of_day, completedDays: h.completed_days || []
+             })));
+        
+        // Process Progress with Seeding
+        if (progressResponse.error) {
+            if (progressResponse.error.code === 'PGRST116') {
+                 // Profile missing - Seed it immediately
+                 console.log("Profile not found, seeding initial progress...");
+                 const dbInit = toDbProgress(initialProgress, session.user.id);
+                 const { error: seedError } = await supabase.from('user_profile_progress').upsert(dbInit);
+                 if (seedError) console.error("Error seeding profile:", seedError);
+                 setProgress(initialProgress);
             } else {
-                setProgress(initialProgress);
+                 console.error('Error fetching profile:', progressResponse.error.message);
+                 if (progressResponse.error.message.includes("schema cache")) {
+                      alert("שגיאה חמורה: נראה שמבנה מסד הנתונים אינו מעודכן. אנא רענן.");
+                 }
             }
-            
-            isInitialLoadComplete.current = true;
-        } catch (err) {
-            console.error("Critical error during data fetch:", err);
+        } else if (progressResponse.data) {
+            setProgress(fromDbProgress(progressResponse.data));
         }
+        
+        isInitialLoadComplete.current = true;
       } else {
         setTasks([]);
         setHabits([]);
@@ -263,36 +263,14 @@ const App: React.FC = () => {
     fetchData();
   }, [session]);
 
-  // Persist state locally (fallback against tab discard / refresh)
-  useEffect(() => {
-    if (!session) return;
-
-    const key = `ff_state_${session.user.id}`;
-    const payload = {
-      tasks,
-      habits,
-      progress,
-      savedAt: Date.now(),
-    };
-
-    try {
-      localStorage.setItem(key, JSON.stringify(payload));
-    } catch (e) {
-      console.warn("Failed saving local state", e);
-    }
-  }, [session, tasks, habits, progress]);
-
   // Data Saving for Progress
   useEffect(() => {
     const saveProgress = async () => {
         if (session && isInitialLoadComplete.current && supabase) {
             const dbProgress = toDbProgress(progress, session.user.id);
+            // Use user_profile_progress for profile data
             const { error } = await supabase.from('user_profile_progress').upsert(dbProgress);
-            if(error && error.message.includes("schema cache")) {
-                setSchemaError(true);
-            } else if (error) {
-                console.error("Error saving progress:", error.message);
-            }
+            if(error) console.error("Error saving progress:", error.message);
         }
     };
     
@@ -308,7 +286,7 @@ const App: React.FC = () => {
   useEffect(() => {
     document.body.className = `theme-${progress.activeTheme}`;
   }, [progress.activeTheme]);
-
+  
   useEffect(() => {
     localStorage.setItem('ff_active_sound', activeSound);
   }, [activeSound]);
@@ -341,6 +319,7 @@ const App: React.FC = () => {
 
     return () => clearInterval(interval);
   }, []);
+
 
   const triggerConfetti = () => {
     if (typeof window.confetti === 'function') {
@@ -738,29 +717,9 @@ const App: React.FC = () => {
         handleAddTask(newTaskData);
       });
   };
-
-  if (schemaError) {
-    return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
-            <div className="bg-white p-8 rounded-2xl shadow-lg border border-indigo-200 w-full max-w-lg">
-                <h1 className="text-3xl font-bold text-indigo-800 mb-4">🔄 מעדכן מבנה נתונים...</h1>
-                <p className="text-slate-700 mb-6">ביצעת שינויים ב-Supabase והשרת עדיין מעבד אותם. זה לוקח בדרך כלל פחות מדקה.</p>
-                <div className="flex justify-center mb-6">
-                    <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
-                </div>
-                <button 
-                    onClick={() => window.location.reload()} 
-                    className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 transition-all"
-                >
-                    נסה לרענן עכשיו
-                </button>
-            </div>
-        </div>
-    );
-  }
-
+  
   if (isLoading) {
-    return <LoadingScreen message="מכין את הפנדה שלך..." />;
+    return <LoadingScreen />;
   }
 
   if (!session) {

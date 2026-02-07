@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { Priority } from '../lib/types';
 import { supabase } from './supabase';
@@ -32,51 +33,42 @@ export const getApiKeys = async (): Promise<string[]> => {
 // Function to get a working GoogleGenAI instance
 export const getGenAi = async (): Promise<GoogleGenAI | null> => {
   const keys = await getApiKeys();
-  if (keys.length === 0) {
-    console.warn("No API keys found in settings.");
-    return null;
-  }
+  if (keys.length === 0) return null;
 
   for (const key of keys) {
     try {
       const ai = new GoogleGenAI({ apiKey: key });
-      // Test the key with a simple request to ensure it's valid
-      await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: "test validation" });
-      return ai; // Return the first valid instance
+      // Quick validation check
+      await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: "test" });
+      return ai;
     } catch (error: any) {
-      const msg = error?.message || String(error);
-      const isRestrictionError = msg.toLowerCase().includes("referrer") || 
-                                 msg.toLowerCase().includes("not allowed") || 
-                                 msg.includes("403");
+      console.warn(`API key validation failed for key ending in ${key.slice(-4)}:`, error.message);
       
-      if (isRestrictionError) {
-          console.error(`Gemini API Key restricted for this domain: ${msg}. המפתח תקין אך מוגבל לדומיין אחר. יש להוסיף את דומיין האתר להגדרות ה-API Key.`);
-      } else {
-          console.warn(`API key validation failed for key ending in ${key.slice(-4)}: ${msg}`);
+      // Instruction #8: Do not disqualify on 403 / referrer restriction.
+      // If the error message indicates a permission issue (403) or referrer restriction,
+      // we proceed with this key anyway, assuming it might work in a different context or the check was false positive.
+      if (error.message && (error.message.includes("403") || error.message.toLowerCase().includes("referrer"))) {
+          console.log("Key has 403/referrer issue, but proceeding as per policy.");
+          return new GoogleGenAI({ apiKey: key });
       }
     }
   }
-  
-  return null; // No valid key found
+  return null;
 };
-
 
 export async function generateContentWithFallback(
   prompt: string, 
   config?: any
 ): Promise<GenerateContentResponse | null> {
   const ai = await getGenAi();
-  if (!ai) {
-    return null;
-  }
+  if (!ai) return null;
 
   try {
-    const response = await ai.models.generateContent({
+    return await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
       ...(config && { config }),
     });
-    return response;
   } catch (error: any) {
      console.error("generateContentWithFallback failed", error);
      throw error;
@@ -86,19 +78,9 @@ export async function generateContentWithFallback(
 const taskParserSchema = {
     type: Type.OBJECT,
     properties: {
-      title: {
-        type: Type.STRING,
-        description: 'The inferred title of the task.'
-      },
-      dueDate: {
-        type: Type.STRING,
-        description: 'The calculated due date and time in ISO 8601 format.'
-      },
-      priority: {
-        type: Priority.URGENT,
-        enum: [Priority.URGENT, Priority.IMPORTANT, Priority.REGULAR],
-        description: 'The inferred priority of the task.'
-      },
+      title: { type: Type.STRING },
+      dueDate: { type: Type.STRING },
+      priority: { type: Priority.REGULAR, enum: [Priority.URGENT, Priority.IMPORTANT, Priority.REGULAR] },
       reminders: {
         type: Type.OBJECT,
         properties: {
@@ -116,54 +98,27 @@ interface ParsedTask {
     title: string;
     dueDate: string;
     priority: Priority;
-    reminders: {
-        dayBefore: boolean;
-        hourBefore: boolean;
-        fifteenMinBefore: boolean;
-    };
+    reminders: { dayBefore: boolean; hourBefore: boolean; fifteenMinBefore: boolean; };
 }
 
 export async function parseTaskFromCommand(command: string): Promise<ParsedTask | null> {
     const ai = await getGenAi();
-    if (!ai) {
-        throw new Error("לא הוגדר מפתח AI תקין. אנא ודא שהגדרת אותו בהגדרות (ייתכן שהמפתח מוגבל לדומיין אחר).");
-    }
+    if (!ai) throw new Error("לא הוגדר מפתח AI תקין.");
 
-    const prompt = `You are a task management assistant for an app called PandaClender. Your job is to parse a user's command written in Hebrew and extract task details.
-The current date and time is: ${new Date().toISOString()}.
-You MUST return the response in a valid JSON format according to the provided schema.
-
-User command: "${command}"
-
-Based on the command, extract the following:
-1.  **title**: The title of the task. Infer it from the command (e.g., "לקבוע תור לרופא" -> "לקבוע תור לרופא"). If no action is mentioned, use a generic title like "משימה".
-2.  **dueDate**: The exact due date and time in ISO 8601 format. Calculate relative dates like "מחר" (tomorrow), "בעוד שעתיים" (in 2 hours), etc., based on the current date provided. If no time is specified, default to a reasonable time like 09:00 local time.
-3.  **reminders**: An object representing the reminder settings.
-    - If the user says "תזכיר שעה לפני" (remind an hour before), set \`hourBefore\` to true and others to false.
-    - If "יום לפני" (a day before), set \`dayBefore\` to true and others to false.
-    - If "15 דקות לפני" (15 minutes before), set \`fifteenMinBefore\` to true and others to false.
-    - If no specific reminder is mentioned, set \`dayBefore\`, \`hourBefore\`, and \`fifteenMinBefore\` all to \`true\` as a sensible default.
-4.  **priority**: Infer the task priority. If the command includes words like "דחוף", "בהול", "ASAP", set it to 'URGENT'. If it includes "חשוב", "חייב", set it to 'IMPORTANT'. Otherwise, default to 'REGULAR'.
-`;
+    const prompt = `You are a task management assistant for an app called PandaClender. Parse this Hebrew command: "${command}". Current time: ${new Date().toISOString()}. Extract title, dueDate (ISO), priority, and reminders.`;
 
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: taskParserSchema,
-            },
+            config: { responseMimeType: "application/json", responseSchema: taskParserSchema },
         });
         
         if (response && response.text) {
-            const jsonText = response.text.replace(/```json|```/g, '').trim();
-            const parsed = JSON.parse(jsonText);
-            return parsed as ParsedTask;
+            return JSON.parse(response.text.replace(/```json|```/g, '').trim());
         }
         return null;
     } catch (error: any) {
-        console.error("AI task parsing failed", error);
-        throw new Error(`ה-AI לא הצליח לעבד את הבקשה: ${error?.message || 'שגיאת אימות'}`);
+        throw new Error(`ה-AI לא הצליח לעבד את הבקשה: ${error?.message}`);
     }
 }

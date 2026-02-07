@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS public.user_profile_progress (
     purchased_confetti_packs text[] NULL,
     active_power_up jsonb NULL,
     api_keys text[] NULL,
+    updated_at timestamp with time zone DEFAULT now(),
     CONSTRAINT user_profile_progress_pkey PRIMARY KEY (user_id)
 );
 
