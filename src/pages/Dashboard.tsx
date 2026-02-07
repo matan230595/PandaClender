@@ -1,31 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Task, Habit, UserProgress, Priority, SubTask, CustomColors, DbTask } from '../lib/types';
+import { useAuth } from '../providers/AuthProvider';
+import { supabase } from '../lib/supabaseClient';
+import { Task, UserProgress, Priority, Habit, SubTask, DbTask } from '../lib/types';
 import { ACHIEVEMENTS } from '../lib/constants';
-import Header from './Header';
-import WeeklyCalendar from './WeeklyCalendar';
-import MonthlyCalendar from './MonthlyCalendar';
-import DailySchedule from './DailySchedule';
-import FocusMode from './FocusMode';
-import Pomodoro from './Pomodoro';
-import HabitTracker from './HabitTracker';
-import TaskManager from './TaskManager';
-import ReminderSystem from './ReminderSystem';
-import ProgressStats from './ProgressStats';
-import Dashboard from './Dashboard';
-import BrainDump from './BrainDump';
-import Settings from './Settings';
-import RewardsStore from './RewardsStore';
-import AiCoach from './AiCoach';
-import BodyDoubling from './BodyDoubling';
-import CalendarDayModal from './CalendarDayModal';
 import { generateContentWithFallback, parseTaskFromCommand } from '../utils/ai';
-import HabitReminderSystem from './HabitReminderSystem';
-import TaskDetailModal from './TaskDetailModal';
-import StruggleModeModal from './StruggleModeModal';
-import AiAudioTools from './AiAudioTools';
-import { supabase, supabaseInitializationError } from '../utils/supabase';
-import { Session } from '@supabase/supabase-js';
-import Auth from './Auth';
+
+// Components
+import Header from '../components/Header';
+import WeeklyCalendar from '../components/WeeklyCalendar';
+import MonthlyCalendar from '../components/MonthlyCalendar';
+import DailySchedule from '../components/DailySchedule';
+import FocusMode from '../components/FocusMode';
+import Pomodoro from '../components/Pomodoro';
+import HabitTracker from '../components/HabitTracker';
+import TaskManager from '../components/TaskManager';
+import ReminderSystem from '../components/ReminderSystem';
+import ProgressStats from '../components/ProgressStats';
+import DashboardView from '../components/DashboardView'; // The summary view
+import BrainDump from '../components/BrainDump';
+import Settings from '../components/Settings';
+import RewardsStore from '../components/RewardsStore';
+import AiCoach from '../components/AiCoach';
+import BodyDoubling from '../components/BodyDoubling';
+import CalendarDayModal from '../components/CalendarDayModal';
+import HabitReminderSystem from '../components/HabitReminderSystem';
+import TaskDetailModal from '../components/TaskDetailModal';
+import StruggleModeModal from '../components/StruggleModeModal';
+import AiAudioTools from '../components/AiAudioTools';
 
 // --- DB CONVERSION HELPERS ---
 
@@ -33,7 +34,7 @@ const fromDbTask = (dbTask: DbTask): Task => ({
     id: dbTask.id,
     user_id: dbTask.user_id,
     title: dbTask.title,
-    description: dbTask.description,
+    description: dbTask.description || '',
     priority: dbTask.priority,
     dueDate: new Date(dbTask.due_date),
     creationDate: new Date(dbTask.creation_date),
@@ -46,7 +47,6 @@ const fromDbTask = (dbTask: DbTask): Task => ({
 });
 
 const toDbTask = (task: Task) => ({
-    id: task.id,
     user_id: task.user_id,
     title: task.title,
     description: task.description,
@@ -59,22 +59,6 @@ const toDbTask = (task: Task) => ({
     reminders: task.reminders,
     energy_level: task.energyLevel,
     snoozed_until: task.snoozedUntil ? new Date(task.snoozedUntil).toISOString() : null,
-});
-
-// STRICTLY targeting 'user_profile_progress' schema
-const toDbProgress = (progress: UserProgress, userId: string) => ({
-    user_id: userId,
-    points: progress.points,
-    level: progress.level,
-    streak: progress.streak,
-    achievements: progress.achievements,
-    purchased_themes: progress.purchasedThemes,
-    active_theme: progress.activeTheme,
-    purchased_sound_packs: progress.purchasedSoundPacks,
-    purchased_confetti_packs: progress.purchasedConfettiPacks,
-    active_power_up: progress.activePowerUp,
-    api_keys: progress.apiKeys,
-    updated_at: new Date().toISOString(), // Mandatory for audit
 });
 
 const fromDbProgress = (dbProgress: any): UserProgress => ({
@@ -103,39 +87,14 @@ const initialProgress: UserProgress = {
     apiKeys: [],
 };
 
-const LoadingScreen: React.FC<{ message?: string }> = ({ message = "טוען נתונים..." }) => (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-        <p className="mt-4 font-bold text-slate-500">{message}</p>
-    </div>
-);
-
-// --- MAIN APP COMPONENT ---
-
-const App: React.FC = () => {
-  // 1. Critical Config Check
-  if (supabaseInitializationError) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-6 text-center">
-        <div className="bg-white p-8 rounded-2xl shadow-lg border border-red-200 w-full max-w-lg">
-            <h1 className="text-3xl font-bold text-red-800 mb-4">🚨 שגיאת תצורה 🚨</h1>
-            <p className="text-slate-700 mb-6">נראה שיש בעיה בהגדרות האפליקציה.</p>
-            <div className="bg-red-50 text-red-700 p-4 rounded-lg text-start text-sm font-mono">
-                <p className="font-bold">שגיאה:</p>
-                <p>{supabaseInitializationError}</p>
-            </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. State Management
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+const Dashboard: React.FC = () => {
+  const { user, signOut } = useAuth();
+  
+  // State
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [progress, setProgress] = useState<UserProgress>(initialProgress);
-  const isInitialLoadComplete = useRef(false);
+  const [loading, setLoading] = useState(true);
 
   // Views & UI State
   const [mainView, setMainView] = useState<'dashboard' | 'calendar' | 'tasks' | 'habits' | 'stats' | 'rewards' | 'settings'>('dashboard');
@@ -155,7 +114,7 @@ const App: React.FC = () => {
   const [struggleTask, setStruggleTask] = useState<Task | null>(null);
 
   // Local Preferences
-  const [customColors, setCustomColors] = useState<CustomColors>(() => {
+  const [customColors, setCustomColors] = useState<any>(() => {
     const saved = localStorage.getItem('ff_custom_colors');
     return saved ? JSON.parse(saved) : {
       [Priority.URGENT]: '#ef4444',
@@ -166,137 +125,50 @@ const App: React.FC = () => {
   const [activeSound, setActiveSound] = useState(localStorage.getItem('ff_active_sound') || 'none');
   const activeFocusTask = tasks.find(t => t.id === focusTaskId);
 
-  // 3. Authentication Effect
+  // Load Data Effect
   useEffect(() => {
-    if (!supabase) return;
-    
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
+    if (!user) return;
+    setLoading(true);
 
-    // Listen for changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (!session) {
-          isInitialLoadComplete.current = false;
-      }
-    });
+    const fetchData = async () => {
+        // 1. Fetch Tasks
+        const { data: tasksData } = await supabase.from('tasks').select('*').eq('user_id', user.id);
+        if (tasksData) setTasks(tasksData.map(fromDbTask));
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // 4. Persistence Effect (Local Storage Backup)
-  useEffect(() => {
-    if (!session) return;
-    const key = `ff_state_${session.user.id}`;
-    const payload = { tasks, habits, progress, savedAt: Date.now() };
-    try {
-      localStorage.setItem(key, JSON.stringify(payload));
-    } catch (e) {
-      console.warn("Local storage save failed", e);
-    }
-  }, [session, tasks, habits, progress]);
-
-  // 5. DATA LOADING EFFECT (The Critical Logic)
-  useEffect(() => {
-    const loadData = async () => {
-      if (!supabase) return;
-      setIsLoading(true);
-
-      if (session) {
-        // A. Load Local Fallback
-        try {
-          const localKey = `ff_state_${session.user.id}`;
-          const raw = localStorage.getItem(localKey);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed?.tasks) setTasks(parsed.tasks.map((t: any) => ({ ...t, dueDate: new Date(t.dueDate), creationDate: new Date(t.creationDate) })));
-            if (parsed?.habits) setHabits(parsed.habits);
-            if (parsed?.progress) setProgress(parsed.progress);
-          }
-        } catch (e) { console.warn("Fallback load error", e); }
-
-        // B. Fetch Remote Data (Parallel)
-        const [tasksRes, habitsRes, profileRes] = await Promise.all([
-            supabase.from('tasks').select('*').eq('user_id', session.user.id),
-            supabase.from('habits').select('*').eq('user_id', session.user.id),
-            // CRITICAL: use maybeSingle() on user_profile_progress to handle "0 rows" gracefully
-            supabase.from('user_profile_progress').select('*').eq('user_id', session.user.id).maybeSingle()
-        ]);
-
-        // Process Tasks
-        if (tasksRes.data) setTasks(tasksRes.data.map(fromDbTask));
-        
-        // Process Habits
-        if (habitsRes.data) setHabits(habitsRes.data.map(h => ({
-            id: h.id, title: h.title, icon: h.icon, timeOfDay: h.time_of_day, completedDays: h.completed_days || []
-        })));
-
-        // Process Profile (Seeding Logic)
-        if (profileRes.data) {
-            // Profile exists -> Load it
-            setProgress(fromDbProgress(profileRes.data));
+        // 2. Fetch Progress (or create)
+        const { data: progressData } = await supabase.from('user_profile_progress').select('*').eq('user_id', user.id).maybeSingle();
+        if (progressData) {
+            setProgress(fromDbProgress(progressData));
         } else {
-            // Profile DOES NOT exist -> Create it immediately (First Login)
-            console.log("Creating new profile in user_profile_progress...");
-            const newProfileData = toDbProgress(initialProgress, session.user.id);
-            
-            const { error: insertError, data: insertedData } = await supabase
-                .from('user_profile_progress')
-                .insert(newProfileData)
-                .select()
-                .single();
-            
-            if (insertError) {
-                console.error("Failed to seed profile:", insertError);
-            } else if (insertedData) {
-                console.log("Profile seeded successfully.");
-                setProgress(fromDbProgress(insertedData));
-            } else {
-                // Fallback if insert succeeds but returns nothing (rare)
-                setProgress(initialProgress);
-            }
+             // Create initial profile if missing
+             const newProfile = {
+                 user_id: user.id,
+                 points: 0,
+                 level: 1,
+                 streak: 0,
+                 achievements: ACHIEVEMENTS,
+                 purchased_themes: ['default'],
+                 active_theme: 'default'
+             };
+             await supabase.from('user_profile_progress').insert(newProfile);
+             setProgress(initialProgress);
         }
 
-        isInitialLoadComplete.current = true;
-      } else {
-        // No session
-        setTasks([]);
-        setHabits([]);
-        setProgress(initialProgress);
-        isInitialLoadComplete.current = false;
-      }
-      setIsLoading(false);
-    };
-
-    loadData();
-  }, [session]);
-
-  // 6. DATA SAVING EFFECT (Profile Only)
-  useEffect(() => {
-    const saveProfile = async () => {
-        if (session && isInitialLoadComplete.current && supabase) {
-            const dbData = toDbProgress(progress, session.user.id);
-            // CRITICAL: Ensure we are writing to user_profile_progress
-            const { error } = await supabase
-                .from('user_profile_progress')
-                .upsert(dbData);
-            
-            if (error) console.error("Profile sync failed:", error.message);
+        // 3. Fetch Habits
+        const { data: habitsData } = await supabase.from('habits').select('*').eq('user_id', user.id);
+        if (habitsData) {
+             setHabits(habitsData.map(h => ({
+                 id: h.id, title: h.title, icon: h.icon, timeOfDay: h.time_of_day, completedDays: h.completed_days || []
+             })));
         }
+
+        setLoading(false);
     };
 
-    const debounce = setTimeout(saveProfile, 1000);
-    return () => clearTimeout(debounce);
-  }, [progress, session]);
+    fetchData();
+  }, [user]);
 
-
-  // 7. Theme & Audio Effects
-  useEffect(() => {
-    document.body.className = `theme-${progress.activeTheme}`;
-  }, [progress.activeTheme]);
-  
+  // Persist local preferences
   useEffect(() => {
     localStorage.setItem('ff_active_sound', activeSound);
   }, [activeSound]);
@@ -305,33 +177,7 @@ const App: React.FC = () => {
     localStorage.setItem('ff_custom_colors', JSON.stringify(customColors));
   }, [customColors]);
 
-  // 8. Notifications Loop
-  useEffect(() => {
-    const interval = setInterval(() => {
-        const scheduledTime = localStorage.getItem('ff_daily_reminder_time');
-        if (!scheduledTime || Notification.permission !== 'granted') return;
-
-        const now = new Date();
-        const [hours, minutes] = scheduledTime.split(':');
-        
-        if (now.getHours() === parseInt(hours) && now.getMinutes() === parseInt(minutes)) {
-            const lastNotifDate = localStorage.getItem('ff_last_daily_notif');
-            const todayStr = now.toISOString().split('T')[0];
-            
-            if (lastNotifDate !== todayStr) {
-                new Notification('PandaClender: בוקר טוב!', { 
-                    body: 'הגיע הזמן לתכנן את היום שלך.',
-                    icon: '/favicon.ico'
-                });
-                localStorage.setItem('ff_last_daily_notif', todayStr);
-            }
-        }
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // --- HANDLERS ---
-
+  // Handlers
   const triggerConfetti = () => {
     if (typeof window.confetti === 'function') {
       const isRainbow = progress.purchasedConfettiPacks.includes('rainbow_confetti');
@@ -342,23 +188,25 @@ const App: React.FC = () => {
       window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: particleColors });
     }
   };
-  
+
   const handleAddTask = async (newTaskData: Omit<Task, 'id' | 'creationDate' | 'completed' | 'user_id'>) => {
-    if (!session || !supabase) return;
+    if (!user) return;
     const fullNewTask: Task = {
         ...newTaskData,
-        id: '', 
+        id: '', // Supabase will gen ID, but we set empty for now
+        user_id: user.id,
         creationDate: new Date(),
-        completed: false,
-        user_id: session.user.id
+        completed: false
     };
-    
+
     const { data, error } = await supabase.from('tasks').insert([toDbTask(fullNewTask)]).select().single();
-    if (error) {
-        alert(`שגיאה בהוספת משימה: ${error.message}`);
-    } else if (data) {
+    if (!error && data) {
         setTasks(prev => [fromDbTask(data as DbTask), ...prev]);
         triggerConfetti();
+        // Update points
+        const newPoints = progress.points + 10;
+        await supabase.from('user_profile_progress').update({ points: newPoints }).eq('user_id', user.id);
+        setProgress(p => ({ ...p, points: newPoints }));
     }
   };
 
@@ -369,6 +217,7 @@ const App: React.FC = () => {
       
       const newTaskData = {
         title: parsedTask.title,
+        description: '',
         dueDate: new Date(parsedTask.dueDate),
         reminders: { ...parsedTask.reminders, custom: null },
         priority: parsedTask.priority || Priority.REGULAR,
@@ -378,13 +227,13 @@ const App: React.FC = () => {
       await handleAddTask(newTaskData);
     } catch (error: any) {
       console.error("AI Command Error:", error);
-      throw error;
+      alert("שגיאה בפענוח: " + error.message);
     }
   };
 
   const handleToggleTaskCompletion = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!task || !supabase) return;
+    if (!task) return;
     
     const isNowCompleted = !task.completed;
     const updatedTask = { 
@@ -393,7 +242,7 @@ const App: React.FC = () => {
         subTasks: task.subTasks.map(st => ({...st, completed: isNowCompleted})),
         snoozedUntil: undefined
     };
-    
+
     const { error } = await supabase.from('tasks').update(toDbTask(updatedTask)).eq('id', taskId);
 
     if (!error) {
@@ -401,21 +250,18 @@ const App: React.FC = () => {
         if (isNowCompleted) {
           const isPowerUpActive = progress.activePowerUp && progress.activePowerUp.expires > Date.now();
           const pointsEarned = isPowerUpActive ? 40 : 20;
-          setProgress(p => {
-              const newAchievements = p.achievements.map(a => {
-                  if (a.id === 'a1' && !a.unlocked) return {...a, unlocked: true};
-                  return a;
-              });
-              return { ...p, points: p.points + pointsEarned, achievements: newAchievements };
-          });
+          const newPoints = progress.points + pointsEarned;
+          
+          await supabase.from('user_profile_progress').update({ points: newPoints }).eq('user_id', user!.id);
+          setProgress(p => ({ ...p, points: newPoints }));
           triggerConfetti();
         }
     }
   };
-  
+
   const handleSnoozeTask = async (taskId: string, minutes: number) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!task || !supabase) return;
+    if (!task) return;
 
     const now = Date.now();
     const newDueDate = new Date(now + minutes * 60000);
@@ -426,7 +272,7 @@ const App: React.FC = () => {
         due_date: newDueDate.toISOString(),
         snoozed_until: new Date(snoozedUntil).toISOString() 
     }).eq('id', taskId);
-    
+
     if (!error) {
         setTasks(prev => prev.map(t => (t.id === taskId ? updatedTask : t)));
     }
@@ -434,7 +280,7 @@ const App: React.FC = () => {
 
   const handleSubTaskToggle = async (taskId: string, subTaskId: string) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!task || !supabase) return;
+    if (!task) return;
 
     const newSubTasks = task.subTasks.map(st => st.id === subTaskId ? { ...st, completed: !st.completed } : st);
     const allSubTasksNowComplete = newSubTasks.length > 0 && newSubTasks.every(st => st.completed);
@@ -443,35 +289,29 @@ const App: React.FC = () => {
     const { error } = await supabase.from('tasks').update({ sub_tasks: newSubTasks, completed: allSubTasksNowComplete }).eq('id', taskId);
 
     if (!error) {
-        setTasks(prevTasks => prevTasks.map(t => t.id === taskId ? updatedTask : t));
-        if (allSubTasksNowComplete && !task.completed) {
-            const isPowerUpActive = progress.activePowerUp && progress.activePowerUp.expires > Date.now();
-            const pointsEarned = isPowerUpActive ? 40 : 20;
-            setProgress(p => ({ ...p, points: p.points + pointsEarned }));
-            triggerConfetti();
-        }
+        setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
     }
   };
-  
+
   const handleAddSubTask = async (taskId: string, subTaskTitle: string) => {
     if (!subTaskTitle.trim()) return;
     const task = tasks.find(t => t.id === taskId);
-    if (!task || !supabase) return;
+    if (!task) return;
 
     const newSubTask: SubTask = { id: `${taskId}-${Math.random().toString(36).substr(2, 9)}`, title: subTaskTitle.trim(), completed: false };
     const newSubTasks = [...task.subTasks, newSubTask];
     const updatedTask = { ...task, subTasks: newSubTasks, completed: false };
 
     const { error } = await supabase.from('tasks').update({ sub_tasks: newSubTasks, completed: false }).eq('id', taskId);
-    
+
     if (!error) {
-        setTasks(prevTasks => prevTasks.map(t => t.id === taskId ? updatedTask : t));
+        setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
     }
   };
-  
+
   const handleToggleHabit = async (habitId: string) => {
     const habit = habits.find(h => h.id === habitId);
-    if (!habit || !supabase) return;
+    if (!habit) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const isCompletedToday = habit.completedDays.includes(todayStr);
@@ -485,38 +325,38 @@ const App: React.FC = () => {
         if (!isCompletedToday) {
             const isPowerUpActive = progress.activePowerUp && progress.activePowerUp.expires > Date.now();
             const pointsEarned = isPowerUpActive ? 20 : 10;
-            setProgress(p => ({...p, points: p.points + pointsEarned}));
+            const newPoints = progress.points + pointsEarned;
+            
+            await supabase.from('user_profile_progress').update({ points: newPoints }).eq('user_id', user!.id);
+            setProgress(p => ({...p, points: newPoints}));
             triggerConfetti();
         }
     }
   };
 
   const handleAddHabit = async (habitData: Omit<Habit, 'id' | 'completedDays'>) => {
-    if (!session || !supabase) return;
+    if (!user) return;
     const dbHabit = {
         title: habitData.title,
         icon: habitData.icon,
         time_of_day: habitData.timeOfDay,
-        user_id: session.user.id,
+        user_id: user.id,
         completed_days: [],
     };
     const { data, error } = await supabase.from('habits').insert([dbHabit]).select().single();
-    if (error) {
-         alert(`שגיאה בהוספת הרגל: ${error.message}`);
-    } else if (data) {
+    if (!error && data) {
         const frontendHabit: Habit = {
             id: data.id,
             title: data.title,
             icon: data.icon,
             timeOfDay: data.time_of_day,
-            completedDays: data.completed_days
+            completedDays: data.completed_days || []
         };
         setHabits(prev => [frontendHabit, ...prev]);
     }
   };
 
   const handleUpdateHabit = async (updatedHabit: Habit) => {
-    if (!supabase) return;
     const { error } = await supabase.from('habits').update({
         title: updatedHabit.title,
         icon: updatedHabit.icon,
@@ -529,44 +369,64 @@ const App: React.FC = () => {
   };
 
   const handleDeleteHabit = async (habitId: string) => {
-    if (!supabase) return;
     const { error } = await supabase.from('habits').delete().eq('id', habitId);
     if (!error) {
         setHabits(prev => prev.filter(h => h.id !== habitId));
     }
   };
 
-  const handlePurchase = (type: 'theme' | 'sound' | 'visualEffect' | 'powerUp', cost: number, id: string) => {
+  const handlePurchase = async (type: 'theme' | 'sound' | 'visualEffect' | 'powerUp', cost: number, id: string) => {
     if (progress.points < cost) return;
     
-    let success = false;
-    setProgress(prev => {
-        const newProgress = { ...prev, points: prev.points - cost };
-        switch(type) {
-            case 'theme':
-                if (!prev.purchasedThemes.includes(id)) { newProgress.purchasedThemes = [...prev.purchasedThemes, id]; success = true; }
-                break;
-            case 'sound':
-                if (!prev.purchasedSoundPacks.includes(id)) { newProgress.purchasedSoundPacks = [...prev.purchasedSoundPacks, id]; success = true; }
-                break;
-            case 'visualEffect':
-                if (!prev.purchasedConfettiPacks.includes(id)) { newProgress.purchasedConfettiPacks = [...prev.purchasedConfettiPacks, id]; success = true; }
-                break;
-            case 'powerUp':
-                 if (id === 'double_points_24h' && (!prev.activePowerUp || prev.activePowerUp.expires < Date.now())) {
-                    const expiry = Date.now() + 24 * 60 * 60 * 1000;
-                    newProgress.activePowerUp = { type: 'doublePoints', expires: expiry };
-                    success = true;
-                 }
-                break;
-        }
-        return newProgress;
-    });
-    if (success) triggerConfetti();
+    let updatedProgress = { ...progress, points: progress.points - cost };
+    let shouldUpdate = false;
+
+    switch(type) {
+        case 'theme':
+            if (!progress.purchasedThemes.includes(id)) { 
+                updatedProgress.purchasedThemes = [...progress.purchasedThemes, id]; 
+                shouldUpdate = true; 
+            }
+            break;
+        case 'sound':
+            if (!progress.purchasedSoundPacks.includes(id)) { 
+                updatedProgress.purchasedSoundPacks = [...progress.purchasedSoundPacks, id]; 
+                shouldUpdate = true; 
+            }
+            break;
+        case 'visualEffect':
+            if (!progress.purchasedConfettiPacks.includes(id)) { 
+                updatedProgress.purchasedConfettiPacks = [...progress.purchasedConfettiPacks, id]; 
+                shouldUpdate = true; 
+            }
+            break;
+        case 'powerUp':
+                if (id === 'double_points_24h' && (!progress.activePowerUp || progress.activePowerUp.expires < Date.now())) {
+                const expiry = Date.now() + 24 * 60 * 60 * 1000;
+                updatedProgress.activePowerUp = { type: 'doublePoints', expires: expiry };
+                shouldUpdate = true;
+                }
+            break;
+    }
+
+    if (shouldUpdate) {
+        // Sync to DB
+        await supabase.from('user_profile_progress').update({
+            points: updatedProgress.points,
+            purchased_themes: updatedProgress.purchasedThemes,
+            purchased_sound_packs: updatedProgress.purchasedSoundPacks,
+            purchased_confetti_packs: updatedProgress.purchasedConfettiPacks,
+            active_power_up: updatedProgress.activePowerUp
+        }).eq('user_id', user!.id);
+        
+        setProgress(updatedProgress);
+        triggerConfetti();
+    }
   };
 
   const handleUpdateApiKeys = async (newKeys: string[]) => {
-    if (!session || !supabase) return;
+    if (!user) return;
+    await supabase.from('user_profile_progress').update({ api_keys: newKeys }).eq('user_id', user.id);
     setProgress(prev => ({...prev, apiKeys: newKeys}));
   };
 
@@ -592,34 +452,27 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLogout = async () => {
-    if (!supabase) return;
-    isInitialLoadComplete.current = false;
-    await supabase.auth.signOut();
-  };
-
   const handleUpdateTask = async (updatedTask: Task) => {
-    if (!supabase) return;
     const { error } = await supabase.from('tasks').update(toDbTask(updatedTask)).eq('id', updatedTask.id);
     if (!error) {
-        setTasks(tasks.map(t => (t.id === updatedTask.id ? updatedTask : t)));
+        setTasks(prev => prev.map(t => (t.id === updatedTask.id ? updatedTask : t)));
         if(viewingTask?.id === updatedTask.id) setViewingTask(updatedTask);
     }
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!supabase) return;
     const { error } = await supabase.from('tasks').delete().eq('id', taskId);
     if (!error) {
-        setTasks(tasks.filter(t => t.id !== taskId));
+        setTasks(prev => prev.filter(t => t.id !== taskId));
         if(viewingTask?.id === taskId) setViewingTask(null);
     }
   };
 
-  // --- RENDER ---
-
-  if (isLoading) return <LoadingScreen />;
-  if (!session) return <Auth />;
+  if (loading) return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+      </div>
+  );
 
   return (
     <div className={`theme-${progress.activeTheme}`}>
@@ -635,22 +488,22 @@ const App: React.FC = () => {
           }
         `}</style>
 
-        {/* --- Global Overlays --- */}
+        {/* Global Overlays */}
         <ReminderSystem tasks={tasks} onComplete={handleToggleTaskCompletion} onSnooze={handleSnoozeTask} />
         <HabitReminderSystem habits={habits} onToggleHabit={handleToggleHabit} />
         
-        {/* --- Modals --- */}
+        {/* Modals */}
         {focusTaskId && activeFocusTask && <FocusMode task={activeFocusTask} onClose={() => setFocusTaskId(null)} onComplete={() => { handleToggleTaskCompletion(focusTaskId); setFocusTaskId(null); }} activeSound={activeSound} purchasedSoundPacks={progress.purchasedSoundPacks} />}
         {showAiCoach && <AiCoach tasks={tasks} progress={progress} onClose={() => setShowAiCoach(false)} />}
         {showBodyDoubling && <BodyDoubling onClose={() => setShowBodyDoubling(false)} />}
         {showAiAudioTools && <AiAudioTools onClose={() => setShowAiAudioTools(false)} />}
         {struggleTask && <StruggleModeModal task={struggleTask} onClose={() => setStruggleTask(null)} />}
         {showBrainDump && <BrainDump onClose={() => setShowBrainDump(false)} onAddTasks={(titles) => {
-             titles.forEach(title => handleAddTask({ title, priority: Priority.REGULAR, dueDate: new Date(), subTasks: [], category: 'אישי', reminders: { dayBefore: true, hourBefore: true, fifteenMinBefore: true, custom: null } }));
+             titles.forEach(title => handleAddTask({ title, description: '', priority: Priority.REGULAR, dueDate: new Date(), subTasks: [], category: 'אישי', reminders: { dayBefore: true, hourBefore: true, fifteenMinBefore: true, custom: null } }));
         }} />}
 
         {selectedCalendarDate && <CalendarDayModal date={selectedCalendarDate} tasks={tasks.filter(t => t.dueDate.toDateString() === selectedCalendarDate.toDateString())} onClose={() => setSelectedCalendarDate(null)} onAddTask={(title) => {
-            handleAddTask({ title, priority: Priority.REGULAR, dueDate: selectedCalendarDate, subTasks: [], category: 'אישי', reminders: { dayBefore: true, hourBefore: true, fifteenMinBefore: true, custom: null }});
+            handleAddTask({ title, description: '', priority: Priority.REGULAR, dueDate: selectedCalendarDate, subTasks: [], category: 'אישי', reminders: { dayBefore: true, hourBefore: true, fifteenMinBefore: true, custom: null }});
           }} onCompleteTask={handleToggleTaskCompletion}
         />}
         
@@ -686,7 +539,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-            {mainView === 'dashboard' && <Dashboard tasks={tasks} onSendEmail={sendEmailReport} isProcessing={isSyncing} onOpenAiCoach={() => setShowAiCoach(true)} onOpenBodyDoubling={() => setShowBodyDoubling(true)} onOpenAiAudioTools={() => setShowAiAudioTools(true)} onComplete={handleToggleTaskCompletion} onViewTask={setViewingTask} onAddTaskFromNaturalLanguage={handleAddTaskFromNaturalLanguage} />}
+            {mainView === 'dashboard' && <DashboardView tasks={tasks} onSendEmail={sendEmailReport} isProcessing={isSyncing} onOpenAiCoach={() => setShowAiCoach(true)} onOpenBodyDoubling={() => setShowBodyDoubling(true)} onOpenAiAudioTools={() => setShowAiAudioTools(true)} onComplete={handleToggleTaskCompletion} onViewTask={setViewingTask} onAddTaskFromNaturalLanguage={handleAddTaskFromNaturalLanguage} />}
             {mainView === 'calendar' && (
               <div className="flex flex-col gap-6">
                 <div className="flex gap-2 mb-2 bg-slate-100 p-1 rounded-xl w-fit mx-auto">
@@ -715,15 +568,16 @@ const App: React.FC = () => {
                 onDeleteHabit={handleDeleteHabit} 
             />}
             {mainView === 'stats' && <ProgressStats tasks={tasks} progress={progress} />}
-            {mainView === 'rewards' && <RewardsStore progress={progress} onPurchase={handlePurchase} activeTheme={progress.activeTheme} onThemeChange={(t) => setProgress(p => ({...p, activeTheme: t}))} />}
+            {mainView === 'rewards' && <RewardsStore progress={progress} onPurchase={handlePurchase} activeTheme={progress.activeTheme} onThemeChange={(t) => { setProgress(p => ({...p, activeTheme: t}));  supabase.from('user_profile_progress').update({ active_theme: t }).eq('user_id', user!.id); }} />}
             {mainView === 'settings' && <Settings 
-                onGoogleLogin={() => supabase && supabase.auth.signInWithOAuth({ provider: 'google' })} 
-                isGoogleConnected={!!session} onLogout={handleLogout}
+                onGoogleLogin={() => alert('מחובר דרך Supabase Auth')} 
+                isGoogleConnected={true} 
+                onLogout={signOut}
                 isConnectingToGoogle={false}
-                googleUser={session?.user} 
+                googleUser={user} 
                 customColors={customColors} setCustomColors={setCustomColors} 
                 progress={progress}
-                onThemeChange={(t) => setProgress(p => ({...p, activeTheme: t}))}
+                onThemeChange={(t) => { setProgress(p => ({...p, activeTheme: t})); supabase.from('user_profile_progress').update({ active_theme: t }).eq('user_id', user!.id); }}
                 activeSound={activeSound}
                 onSoundChange={setActiveSound}
                 tasks={tasks}
@@ -768,4 +622,4 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
+export default Dashboard;
