@@ -539,7 +539,7 @@ const App: React.FC = () => {
       const habitsStatus = habits.map(h => ({ title: h.title, done: h.completedDays.includes(new Date().toISOString().split('T')[0]) }));
       const prompt = `Generate a supportive, ADHD-friendly email summary for the user's ${type === 'day' ? 'today\'s' : 'this week\'s'} schedule. Tasks: ${JSON.stringify(relevantTasks)} Habits: ${JSON.stringify(habitsStatus)} User Points: ${progress.points} Include: A warm greeting, a clear prioritized list of 3 things to focus on, and a motivational closing. Format: Return ONLY the email body in Hebrew. Use professional yet caring tone. Use bullet points.`;
       const response = await generateContentWithFallback(prompt);
-      if (!response) {
+      if (!response || !response.text) {
         // AI call failed, maybe show a toast notification in a real app
         console.error("שגיאה ביצירת המייל. בדוק את מפתחות ה-API שלך בהגדרות.");
         setMainView('settings');
@@ -676,7 +676,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-            {mainView === 'dashboard' && <Dashboard tasks={tasks} habits={habits} progress={progress} onSendEmail={sendEmailReport} isProcessing={isSyncing} onOpenAiCoach={() => setShowAiCoach(true)} onOpenBodyDoubling={() => setShowBodyDoubling(true)} onOpenAiAudioTools={() => setShowAiAudioTools(true)} onFocus={setFocusTaskId} onComplete={handleToggleTaskCompletion} onViewTask={setViewingTask} />}
+            {mainView === 'dashboard' && <Dashboard tasks={tasks} onSendEmail={sendEmailReport} isProcessing={isSyncing} onOpenAiCoach={() => setShowAiCoach(true)} onOpenBodyDoubling={() => setShowBodyDoubling(true)} onOpenAiAudioTools={() => setShowAiAudioTools(true)} onComplete={handleToggleTaskCompletion} onViewTask={setViewingTask} />}
             {mainView === 'calendar' && (
               <div className="flex flex-col gap-6">
                 <div className="flex gap-2 mb-2 bg-slate-100 p-1 rounded-xl w-fit mx-auto">
@@ -704,7 +704,7 @@ const App: React.FC = () => {
                 onUpdateHabit={handleUpdateHabit}
                 onDeleteHabit={handleDeleteHabit} 
             />}
-            {mainView === 'stats' && <ProgressStats tasks={tasks} habits={habits} progress={progress} />}
+            {mainView === 'stats' && <ProgressStats tasks={tasks} progress={progress} />}
             {mainView === 'rewards' && <RewardsStore progress={progress} onPurchase={handlePurchase} activeTheme={progress.activeTheme} onThemeChange={handleThemeChange} />}
             {mainView === 'settings' && <Settings 
                 googleClientId={''} setGoogleClientId={() => {}} 

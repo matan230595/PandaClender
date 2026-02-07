@@ -1,14 +1,13 @@
 
 import React from 'react';
-import { Task, Habit, UserProgress, Priority } from '../types';
+import { Task, UserProgress } from '../types';
 
 interface ProgressStatsProps {
   tasks: Task[];
-  habits: Habit[];
   progress: UserProgress;
 }
 
-const ProgressStats: React.FC<ProgressStatsProps> = ({ tasks, habits, progress }) => {
+const ProgressStats: React.FC<ProgressStatsProps> = ({ tasks, progress }) => {
   const completedTasks = tasks.filter(t => t.completed).length;
   const totalTasks = tasks.length;
   const taskCompletionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;

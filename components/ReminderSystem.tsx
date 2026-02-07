@@ -114,14 +114,15 @@ const ReminderSystem: React.FC<ReminderSystemProps> = ({ tasks, onComplete, onSn
     danger: 'border-red-500 bg-red-50 text-red-900'
   };
 
-  const severityIcon = { info: '📅', warning: '⏳', danger: '🚨', custom: '🔔' };
+  const severityIcon = { info: '📅', warning: '⏳', danger: '🚨' };
+  const iconToShow = activeReminder.type === 'custom' ? '🔔' : severityIcon[activeReminder.severity];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
       <div className={`w-full max-w-sm rounded-[40px] shadow-2xl border-4 p-8 text-center bg-white relative ${severityStyles[activeReminder.severity]}`}>
         <button onClick={handleClose} className="absolute top-4 inset-inline-start-4 text-slate-400 hover:text-slate-600 text-2xl font-bold">×</button>
         <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 ${activeReminder.severity === 'danger' ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-slate-100'}`}>
-          <span className="text-4xl">{severityIcon[activeReminder.type] || '🔔'}</span>
+          <span className="text-4xl">{iconToShow}</span>
         </div>
         
         <h2 className="text-2xl font-black mb-1">{activeReminder.label}</h2>

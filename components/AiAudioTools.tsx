@@ -137,7 +137,7 @@ const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
                             currentInputTranscription = '';
                             currentOutputTranscription = '';
                         }
-                        const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+                        const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
                         if (base64Audio) {
                             nextStartTime = Math.max(nextStartTime, outputAudioContext.currentTime);
                             const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
@@ -251,7 +251,7 @@ const TranscriptionTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
                 model: 'gemini-3-flash-preview',
                 contents: { parts: [{ inlineData: { mimeType: 'audio/webm', data: base64Audio } }, {text: "Transcribe this audio."}] },
             });
-            setTranscribedText(response.text);
+            setTranscribedText(response.text ?? '');
         } catch (err) {
             console.error("Transcription error:", err);
             setTranscribedText("שגיאה בתמלול. נסה שוב.");

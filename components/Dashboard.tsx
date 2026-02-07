@@ -1,18 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
-import { Task, Habit, UserProgress, Priority, EnergyLevel } from '../types';
+import { Task, Priority, EnergyLevel } from '../types';
 import { ENERGY_LEVEL_ICONS, CATEGORY_ICONS } from '../constants';
 
 interface DashboardProps {
   tasks: Task[];
-  habits: Habit[];
-  progress: UserProgress;
   onSendEmail: (type: 'day' | 'week') => Promise<void>;
   isProcessing: false | 'day' | 'week';
   onOpenAiCoach: () => void;
   onOpenBodyDoubling: () => void;
   onOpenAiAudioTools: () => void;
-  onFocus: (id: string) => void;
   onComplete: (id: string) => void;
   onViewTask: (task: Task) => void;
 }
@@ -43,7 +40,7 @@ const CountdownTimer: React.FC<{ snoozedUntil: number }> = ({ snoozedUntil }) =>
 
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-  tasks, habits, progress, onSendEmail, isProcessing, onOpenAiCoach, onOpenBodyDoubling, onOpenAiAudioTools, onFocus, onComplete, onViewTask
+  tasks, onSendEmail, isProcessing, onOpenAiCoach, onOpenBodyDoubling, onOpenAiAudioTools, onComplete, onViewTask
 }) => {
   const [currentEnergy, setCurrentEnergy] = useState<EnergyLevel>('medium');
 

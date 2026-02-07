@@ -24,7 +24,7 @@ const AiCoach: React.FC<AiCoachProps> = ({ onClose, tasks, progress }) => {
 
       try {
         const response = await generateContentWithFallback(prompt);
-        if (response) {
+        if (response && response.text) {
           setTip(response.text);
         } else {
           setTip("לא הצלחתי להתחבר למאמן ה-AI כרגע. אנא ודא שמפתח ה-API שלך הוגדר כראוי.");
