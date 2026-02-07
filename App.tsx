@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Task, Habit, UserProgress, Priority, SubTask, CustomColors, DbTask } from './types';
-import { ACHIEVEMENTS } from './constants';
+import { Task, Habit, UserProgress, Priority, SubTask, CustomColors, DbTask } from './lib/types';
+import { ACHIEVEMENTS } from './lib/constants';
 import Header from './components/Header';
 import WeeklyCalendar from './components/WeeklyCalendar';
 import MonthlyCalendar from './components/MonthlyCalendar';
@@ -205,7 +205,7 @@ const App: React.FC = () => {
             console.error('Error fetching progress:', progressResponse.error.message);
             // This is a critical error to inform the user about.
             if (progressResponse.error.message.includes("schema cache")) {
-                 alert("שגיאה חמורה: נראה שמבנה מסד הנתונים אינו מעודכן. אנא פנה ל-Supabase -> API -> ולחץ על 'Reload schema'.");
+                 alert("שגיאה חמורה: נראה שמבנה מסד הנתונים אינו מעודכן. אנא פנה לתמיכה או נסה לרענן את הסכמה ב-Supabase.");
             }
         } else if (progressResponse.data) {
             setProgress(fromDbProgress(progressResponse.data));

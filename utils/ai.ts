@@ -1,5 +1,7 @@
 
-import { GoogleGenAI, GenerateContentResponse, Type, Priority } from "@google/genai";
+
+import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { Priority } from '../lib/types';
 import { supabase } from './supabase';
 
 // Function to get API keys from the user's profile in Supabase
