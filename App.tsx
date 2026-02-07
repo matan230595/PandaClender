@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Task, Habit, UserProgress, Priority, SubTask, CustomColors, DbTask } from './types';
 import { ACHIEVEMENTS } from './constants';
 import Header from './components/Header';
@@ -62,37 +62,51 @@ const toDbTask = (task: Task) => ({
     snoozed_until: task.snoozedUntil ? new Date(task.snoozedUntil).toISOString() : null,
 });
 
+const toDbProgress = (progress: UserProgress, userId: string) => ({
+    user_id: userId,
+    points: progress.points,
+    level: progress.level,
+    streak: progress.streak,
+    achievements: progress.achievements,
+    purchased_themes: progress.purchasedThemes,
+    active_theme: progress.activeTheme,
+    purchased_sound_packs: progress.purchasedSoundPacks,
+    purchased_confetti_packs: progress.purchasedConfettiPacks,
+    active_power_up: progress.activePowerUp,
+});
+
+const fromDbProgress = (dbProgress: any): UserProgress => ({
+    points: dbProgress.points,
+    level: dbProgress.level,
+    streak: dbProgress.streak,
+    achievements: dbProgress.achievements,
+    purchasedThemes: dbProgress.purchased_themes,
+    activeTheme: dbProgress.active_theme,
+    purchasedSoundPacks: dbProgress.purchased_sound_packs,
+    purchasedConfettiPacks: dbProgress.purchased_confetti_packs,
+    activePowerUp: dbProgress.active_power_up,
+});
+
+const initialProgress: UserProgress = {
+    points: 0, 
+    level: 1, 
+    streak: 0,
+    achievements: ACHIEVEMENTS.map(a => ({...a, unlocked: false})),
+    purchasedThemes: ['default'],
+    activeTheme: 'default',
+    purchasedSoundPacks: ['none'],
+    purchasedConfettiPacks: [],
+    activePowerUp: null,
+};
+
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
-  
-  const [progress, setProgress] = useState<UserProgress>(() => {
-    // This can also be migrated to Supabase later
-    const savedPowerUp = localStorage.getItem('ff_active_powerup');
-    let activePowerUp = null;
-    if (savedPowerUp) {
-        const parsed = JSON.parse(savedPowerUp);
-        if (parsed.expires > Date.now()) {
-            activePowerUp = parsed;
-        } else {
-            localStorage.removeItem('ff_active_powerup');
-        }
-    }
-    return { 
-        points: 0, 
-        level: 1, 
-        streak: 0,
-        achievements: ACHIEVEMENTS.map(a => ({...a, unlocked: false})),
-        purchasedThemes: ['default'],
-        activeTheme: 'default',
-        purchasedSoundPacks: ['none'],
-        purchasedConfettiPacks: [],
-        activePowerUp: activePowerUp,
-    };
-  });
-  
+  const [progress, setProgress] = useState<UserProgress>(initialProgress);
+  const isInitialLoadComplete = useRef(false);
+
   const [mainView, setMainView] = useState<'dashboard' | 'calendar' | 'tasks' | 'habits' | 'stats' | 'rewards' | 'settings'>('dashboard');
   const [calendarSubView, setCalendarSubView] = useState<'day' | 'week' | 'month'>('week');
   
@@ -121,7 +135,7 @@ const App: React.FC = () => {
   
   const [activeSound, setActiveSound] = useState(localStorage.getItem('ff_active_sound') || 'none');
 
-  // Supabase Auth and Data Loading
+  // Supabase Auth
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -134,30 +148,67 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Data Loading
   useEffect(() => {
     const fetchData = async () => {
       if (session) {
-        const { data: tasksData, error: tasksError } = await supabase
-          .from('tasks')
-          .select('*')
-          .eq('user_id', session.user.id);
-          
-        if (tasksError) {
-            console.error('Error fetching tasks:', tasksError);
-            alert(`שגיאה בטעינת המשימות: ${tasksError.message}. האם יצרת את טבלת ה-tasks לפי ההוראות?`);
-        } else {
-            const formattedTasks = (tasksData as DbTask[] || []).map(fromDbTask);
-            setTasks(formattedTasks);
-        }
+        isInitialLoadComplete.current = false;
+        // Fetch Tasks, Habits, and Progress in parallel
+        const [tasksResponse, habitsResponse, progressResponse] = await Promise.all([
+          supabase.from('tasks').select('*').eq('user_id', session.user.id),
+          supabase.from('habits').select('*').eq('user_id', session.user.id),
+          supabase.from('user_progress').select('*').eq('user_id', session.user.id).single()
+        ]);
 
+        // Process Tasks
+        if (tasksResponse.error) console.error('Error fetching tasks:', tasksResponse.error);
+        else setTasks((tasksResponse.data as DbTask[] || []).map(fromDbTask));
+
+        // Process Habits
+        if (habitsResponse.error) console.error('Error fetching habits:', habitsResponse.error);
+        else setHabits((habitsResponse.data || []).map(h => ({
+                id: h.id, title: h.title, icon: h.icon, timeOfDay: h.time_of_day, completedDays: h.completed_days || []
+             })));
+        
+        // Process Progress
+        if (progressResponse.error && progressResponse.error.code !== 'PGRST116') { // Ignore 'exact one row' error
+            console.error('Error fetching progress:', progressResponse.error);
+        } else if (progressResponse.data) {
+            setProgress(fromDbProgress(progressResponse.data));
+        } else {
+            // No progress found, initialize for new user
+            setProgress(initialProgress);
+        }
+        
+        isInitialLoadComplete.current = true;
       } else {
         setTasks([]);
         setHabits([]);
+        setProgress(initialProgress);
+        isInitialLoadComplete.current = false;
       }
     };
 
     fetchData();
   }, [session]);
+
+  // Data Saving for Progress
+  useEffect(() => {
+    const saveProgress = async () => {
+        if (session && isInitialLoadComplete.current) {
+            const dbProgress = toDbProgress(progress, session.user.id);
+            const { error } = await supabase.from('user_progress').upsert(dbProgress);
+            if(error) console.error("Error saving progress:", error);
+        }
+    };
+    
+    // Debounce saving to avoid rapid writes
+    const handler = setTimeout(() => {
+        saveProgress();
+    }, 1000);
+
+    return () => clearTimeout(handler);
+  }, [progress, session]);
 
 
   useEffect(() => {
@@ -262,85 +313,179 @@ const App: React.FC = () => {
         if (isNowCompleted) {
           const isPowerUpActive = progress.activePowerUp && progress.activePowerUp.expires > Date.now();
           const pointsEarned = isPowerUpActive ? 40 : 20;
-          setProgress(p => ({ ...p, points: p.points + pointsEarned }));
+          
+          setProgress(p => {
+              const newAchievements = p.achievements.map(a => {
+                  if (a.id === 'a1' && !a.unlocked) return {...a, unlocked: true};
+                  return a;
+              });
+              return { ...p, points: p.points + pointsEarned, achievements: newAchievements };
+          });
+
           triggerConfetti();
         }
     }
   };
   
-  const handleSnoozeTask = (taskId: string, minutes: number) => {
-    // TODO: Update in Supabase
-    setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
-        const now = Date.now();
-        const newDueDate = new Date(now + minutes * 60000);
-        const snoozedUntil = now + minutes * 60000;
-        return { ...t, dueDate: newDueDate, snoozedUntil };
-      }
-      return t;
-    }));
+  const handleSnoozeTask = async (taskId: string, minutes: number) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const now = Date.now();
+    const newDueDate = new Date(now + minutes * 60000);
+    const snoozedUntil = now + minutes * 60000;
+    const updatedTask = { ...task, dueDate: newDueDate, snoozedUntil };
+
+    const { error } = await supabase
+        .from('tasks')
+        .update({ 
+            due_date: newDueDate.toISOString(),
+            snoozed_until: new Date(snoozedUntil).toISOString() 
+        })
+        .eq('id', taskId);
+    
+    if (error) {
+        console.error("Error snoozing task:", error);
+    } else {
+        setTasks(prev => prev.map(t => (t.id === taskId ? updatedTask : t)));
+    }
   };
 
-  const handleSubTaskToggle = (taskId: string, subTaskId: string) => {
-    // TODO: Update in Supabase
-    setTasks(prevTasks => {
-      const newTasks = prevTasks.map(task => {
-        if (task.id === taskId) {
-          const newSubTasks = task.subTasks.map(st => {
-            if (st.id === subTaskId) return { ...st, completed: !st.completed };
-            return st;
-          });
-          const allSubTasksNowComplete = newSubTasks.length > 0 && newSubTasks.every(st => st.completed);
-          if (allSubTasksNowComplete && !task.completed) {
-              const isPowerUpActive = progress.activePowerUp && progress.activePowerUp.expires > Date.now();
-              const pointsEarned = isPowerUpActive ? 40 : 20;
-              setProgress(p => ({ ...p, points: p.points + pointsEarned }));
-              triggerConfetti();
-          }
-          return { ...task, subTasks: newSubTasks, completed: allSubTasksNowComplete };
+  const handleSubTaskToggle = async (taskId: string, subTaskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const newSubTasks = task.subTasks.map(st => 
+        st.id === subTaskId ? { ...st, completed: !st.completed } : st
+    );
+    const allSubTasksNowComplete = newSubTasks.length > 0 && newSubTasks.every(st => st.completed);
+    const updatedTask = { ...task, subTasks: newSubTasks, completed: allSubTasksNowComplete };
+
+    const { error } = await supabase
+        .from('tasks')
+        .update({ sub_tasks: newSubTasks, completed: allSubTasksNowComplete })
+        .eq('id', taskId);
+
+    if (error) {
+        console.error("Error updating subtask:", error);
+    } else {
+        setTasks(prevTasks => prevTasks.map(t => t.id === taskId ? updatedTask : t));
+        if (allSubTasksNowComplete && !task.completed) {
+            const isPowerUpActive = progress.activePowerUp && progress.activePowerUp.expires > Date.now();
+            const pointsEarned = isPowerUpActive ? 40 : 20;
+            setProgress(p => ({ ...p, points: p.points + pointsEarned }));
+            triggerConfetti();
         }
-        return task;
-      });
-      return newTasks;
-    });
+    }
   };
   
-  const handleAddSubTask = (taskId: string, subTaskTitle: string) => {
-    // TODO: Update in Supabase
+  const handleAddSubTask = async (taskId: string, subTaskTitle: string) => {
     if (!subTaskTitle.trim()) return;
-    setTasks(prevTasks => prevTasks.map(task => {
-        if (task.id === taskId) {
-            const newSubTask: SubTask = { id: `${taskId}-${Math.random().toString(36).substr(2, 9)}`, title: subTaskTitle.trim(), completed: false };
-            return { ...task, subTasks: [...task.subTasks, newSubTask], completed: false };
-        }
-        return task;
-    }));
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const newSubTask: SubTask = { id: `${taskId}-${Math.random().toString(36).substr(2, 9)}`, title: subTaskTitle.trim(), completed: false };
+    const newSubTasks = [...task.subTasks, newSubTask];
+    const updatedTask = { ...task, subTasks: newSubTasks, completed: false };
+
+    const { error } = await supabase
+        .from('tasks')
+        .update({ sub_tasks: newSubTasks, completed: false })
+        .eq('id', taskId);
+    
+    if (error) {
+        console.error("Error adding subtask:", error);
+    } else {
+        setTasks(prevTasks => prevTasks.map(t => t.id === taskId ? updatedTask : t));
+    }
   };
   
-  const handleToggleHabit = (habitId: string) => {
-    // TODO: Update in Supabase
+  const handleToggleHabit = async (habitId: string) => {
+    const habit = habits.find(h => h.id === habitId);
+    if (!habit) return;
+
     const todayStr = new Date().toISOString().split('T')[0];
-    setHabits(prev => prev.map(h => {
-      if (h.id === habitId) {
-        const isCompletedToday = h.completedDays.includes(todayStr);
-        let newCompletedDays;
-        if (isCompletedToday) {
-          newCompletedDays = h.completedDays.filter(d => d !== todayStr);
-        } else {
-          newCompletedDays = [...h.completedDays, todayStr];
-          const isPowerUpActive = progress.activePowerUp && progress.activePowerUp.expires > Date.now();
-          const pointsEarned = isPowerUpActive ? 20 : 10;
-          setProgress(p => ({...p, points: p.points + pointsEarned}));
-          triggerConfetti();
+    const isCompletedToday = habit.completedDays.includes(todayStr);
+    const newCompletedDays = isCompletedToday
+        ? habit.completedDays.filter(d => d !== todayStr)
+        : [...habit.completedDays, todayStr];
+    
+    const updatedHabit = { ...habit, completedDays: newCompletedDays };
+
+    const { error } = await supabase
+        .from('habits')
+        .update({ completed_days: newCompletedDays })
+        .eq('id', habitId);
+
+    if (error) {
+        console.error("Error updating habit:", error);
+    } else {
+        setHabits(prev => prev.map(h => (h.id === habitId ? updatedHabit : h)));
+        if (!isCompletedToday) {
+            const isPowerUpActive = progress.activePowerUp && progress.activePowerUp.expires > Date.now();
+            const pointsEarned = isPowerUpActive ? 20 : 10;
+            setProgress(p => ({...p, points: p.points + pointsEarned}));
+            triggerConfetti();
         }
-        return { ...h, completedDays: newCompletedDays };
-      }
-      return h;
-    }));
+    }
+  };
+
+  const handleAddHabit = async (habitData: Omit<Habit, 'id' | 'completedDays'>) => {
+    if (!session) return;
+    const dbHabit = {
+        title: habitData.title,
+        icon: habitData.icon,
+        time_of_day: habitData.timeOfDay,
+        user_id: session.user.id,
+        completed_days: [],
+    };
+    const { data, error } = await supabase
+        .from('habits')
+        .insert(dbHabit)
+        .select()
+        .single();
+
+    if (error) {
+        console.error("Error adding habit:", error);
+    } else if (data) {
+        const frontendHabit: Habit = {
+            id: data.id,
+            title: data.title,
+            icon: data.icon,
+            timeOfDay: data.time_of_day,
+            completedDays: data.completed_days
+        };
+        setHabits(prev => [frontendHabit, ...prev]);
+    }
+  };
+
+  const handleUpdateHabit = async (updatedHabit: Habit) => {
+      const { error } = await supabase
+        .from('habits')
+        .update({
+            title: updatedHabit.title,
+            icon: updatedHabit.icon,
+            time_of_day: updatedHabit.timeOfDay,
+        })
+        .eq('id', updatedHabit.id);
+    
+    if (error) {
+        console.error("Error updating habit:", error);
+    } else {
+        setHabits(prev => prev.map(h => h.id === updatedHabit.id ? updatedHabit : h));
+    }
+  };
+
+  const handleDeleteHabit = async (habitId: string) => {
+    const { error } = await supabase.from('habits').delete().eq('id', habitId);
+    if (error) {
+        console.error("Error deleting habit:", error);
+    } else {
+        setHabits(prev => prev.filter(h => h.id !== habitId));
+    }
   };
 
   const handlePurchase = (type: 'theme' | 'sound' | 'visualEffect' | 'powerUp', cost: number, id: string) => {
-    // TODO: Update in Supabase
     if (progress.points < cost) return;
     
     let success = false;
@@ -369,7 +514,6 @@ const App: React.FC = () => {
                  if (id === 'double_points_24h' && (!prev.activePowerUp || prev.activePowerUp.expires < Date.now())) {
                     const expiry = Date.now() + 24 * 60 * 60 * 1000;
                     newProgress.activePowerUp = { type: 'doublePoints', expires: expiry };
-                    localStorage.setItem('ff_active_powerup', JSON.stringify(newProgress.activePowerUp));
                     success = true;
                  }
                 break;
@@ -381,7 +525,6 @@ const App: React.FC = () => {
   };
 
   const handleThemeChange = (themeId: string) => {
-    // TODO: Update in Supabase
     setProgress(prev => ({ ...prev, activeTheme: themeId }));
   };
   
@@ -414,14 +557,8 @@ const App: React.FC = () => {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-    });
-    if (error) console.error('Error logging in with Google:', error);
-  };
-
   const handleLogout = async () => {
+    isInitialLoadComplete.current = false;
     const { error } = await supabase.auth.signOut();
     if (error) console.error('Error logging out:', error);
   };
@@ -560,12 +697,19 @@ const App: React.FC = () => {
                 onViewTask={setViewingTask}
                 onStruggle={setStruggleTask}
             />}
-            {mainView === 'habits' && <HabitTracker habits={habits} setHabits={setHabits} onToggleHabit={handleToggleHabit} />}
+            {mainView === 'habits' && <HabitTracker 
+                habits={habits} 
+                onToggleHabit={handleToggleHabit}
+                onAddHabit={handleAddHabit}
+                onUpdateHabit={handleUpdateHabit}
+                onDeleteHabit={handleDeleteHabit} 
+            />}
             {mainView === 'stats' && <ProgressStats tasks={tasks} habits={habits} progress={progress} />}
             {mainView === 'rewards' && <RewardsStore progress={progress} onPurchase={handlePurchase} activeTheme={progress.activeTheme} onThemeChange={handleThemeChange} />}
             {mainView === 'settings' && <Settings 
                 googleClientId={''} setGoogleClientId={() => {}} 
-                onGoogleLogin={handleGoogleLogin} isGoogleConnected={!!session} onLogout={handleLogout}
+                onGoogleLogin={() => supabase.auth.signInWithOAuth({ provider: 'google' })} 
+                isGoogleConnected={!!session} onLogout={handleLogout}
                 isConnectingToGoogle={false}
                 googleUser={session?.user} 
                 customColors={customColors} setCustomColors={setCustomColors} 

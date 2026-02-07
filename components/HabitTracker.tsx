@@ -4,8 +4,10 @@ import { Habit } from '../types';
 
 interface HabitTrackerProps {
   habits: Habit[];
-  setHabits: React.Dispatch<React.SetStateAction<Habit[]>>;
   onToggleHabit: (habitId: string) => void;
+  onAddHabit: (habit: Omit<Habit, 'id' | 'completedDays'>) => void;
+  onUpdateHabit: (habit: Habit) => void;
+  onDeleteHabit: (habitId: string) => void;
 }
 
 const HabitFormModal: React.FC<{
@@ -15,7 +17,7 @@ const HabitFormModal: React.FC<{
 }> = ({ habit, onSave, onClose }) => {
     const [title, setTitle] = useState(habit?.title || '');
     const [icon, setIcon] = useState(habit?.icon || '💧');
-    const [timeOfDay, setTimeOfDay] = useState(habit?.timeOfDay || 'morning');
+    const [timeOfDay, setTimeOfDay] = useState<Habit['timeOfDay']>(habit?.timeOfDay || 'morning');
     const isEditing = !!habit;
 
     const handleSave = (e: React.FormEvent) => {
@@ -63,23 +65,24 @@ const HabitFormModal: React.FC<{
     );
 };
 
-const HabitTracker: React.FC<HabitTrackerProps> = ({ habits, setHabits, onToggleHabit }) => {
+const HabitTracker: React.FC<HabitTrackerProps> = ({ habits, onToggleHabit, onAddHabit, onUpdateHabit, onDeleteHabit }) => {
   const todayStr = new Date().toISOString().split('T')[0];
   const [showForm, setShowForm] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
 
-  const handleSaveHabit = (habit: Habit) => {
-      const exists = habits.some(h => h.id === habit.id);
+  const handleSaveHabit = (habitToSave: Habit) => {
+      const exists = habits.some(h => h.id === habitToSave.id);
       if (exists) {
-          setHabits(habits.map(h => h.id === habit.id ? habit : h));
+          onUpdateHabit(habitToSave);
       } else {
-          setHabits([...habits, habit]);
+          const { id, completedDays, ...newHabitData } = habitToSave;
+          onAddHabit(newHabitData);
       }
   };
 
   const handleDeleteHabit = (id: string) => {
       if (window.confirm("בטוח למחוק את ההרגל הזה?")) {
-        setHabits(habits.filter(h => h.id !== id));
+        onDeleteHabit(id);
       }
   };
 
