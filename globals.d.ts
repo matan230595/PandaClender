@@ -1,3 +1,4 @@
+
 // FIX: Manually define types for Vite's `import.meta.env` as the `vite/client`
 // types were not being resolved. This makes environment variables type-safe.
 interface ImportMetaEnv {
@@ -12,4 +13,6 @@ interface ImportMeta {
 interface Window {
   confetti?: (options: any) => void;
   google?: any;
+  atob: (encoded: string) => string;
+  btoa: (raw: string) => string;
 }

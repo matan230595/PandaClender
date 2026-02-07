@@ -99,9 +99,16 @@ const initialProgress: UserProgress = {
     activePowerUp: null,
 };
 
+const LoadingScreen: React.FC = () => (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+        <p className="mt-4 font-bold text-slate-500">טוען...</p>
+    </div>
+);
+
 
 const App: React.FC = () => {
-  if (!supabase) {
+  if (supabaseInitializationError) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-6 text-center">
         <div className="bg-white p-8 rounded-2xl shadow-lg border border-red-200 w-full max-w-lg">
@@ -118,6 +125,7 @@ const App: React.FC = () => {
   }
 
   const [session, setSession] = useState<Session | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [progress, setProgress] = useState<UserProgress>(initialProgress);
@@ -159,6 +167,7 @@ const App: React.FC = () => {
 
     const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      isInitialLoadComplete.current = false;
     });
 
     return () => subscription.unsubscribe();
@@ -167,6 +176,7 @@ const App: React.FC = () => {
   // Data Loading
   useEffect(() => {
     const fetchData = async () => {
+      setIsLoading(true);
       if (session) {
         isInitialLoadComplete.current = false;
         // Fetch Tasks, Habits, and Progress in parallel
@@ -203,6 +213,7 @@ const App: React.FC = () => {
         setProgress(initialProgress);
         isInitialLoadComplete.current = false;
       }
+      setIsLoading(false);
     };
 
     fetchData();
@@ -626,6 +637,10 @@ const App: React.FC = () => {
         handleAddTask(newTaskData);
       });
   };
+  
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
 
   if (!session) {
     return <Auth />;

@@ -111,8 +111,13 @@ const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
 
                         scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                            const l = inputData.length;
+                            const int16 = new Int16Array(l);
+                            for (let i = 0; i < l; i++) {
+                                int16[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
+                            }
                             const pcmBlob: GenAiBlob = {
-                                data: encode(new Uint8Array(new Int16Array(inputData.map(x => x * 32768)).buffer)),
+                                data: encode(new Uint8Array(int16.buffer)),
                                 mimeType: 'audio/pcm;rate=16000',
                             };
                             sessionPromise.current?.then((session) => {
@@ -120,7 +125,8 @@ const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
                             });
                         };
                         source.connect(scriptProcessor);
-                        scriptProcessor.connect(inputAudioContext.destination);
+                        // Do NOT connect to destination, to avoid audio feedback loop
+                        // scriptProcessor.connect(inputAudioContext.destination);
                     },
                     onmessage: async (message: LiveServerMessage) => {
                         if (message.serverContent?.outputTranscription) {
