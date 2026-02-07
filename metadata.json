@@ -1,0 +1,7 @@
+{
+  "name": "PandaClender",
+  "description": "אפליקציית ניהול זמן ומשימות שעוצבה במיוחד לאנשים עם ADHD, הכוללת תזכורות אגרסיביות, מצב פוקוס, גמיפיקציה וטיימר פומודורו.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
