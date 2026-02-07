@@ -4,13 +4,13 @@
 -- 2. Navigate to the "SQL Editor".
 -- 3. Click "New query" and paste the entire content of this file.
 -- 4. Click "Run".
+-- This script is now idempotent. It will create tables if they don't exist and add missing columns.
+-- It is safe to run this multiple times.
 
 -- --- TASKS TABLE ---
--- Stores individual tasks for users.
-
-CREATE TABLE public.tasks (
+CREATE TABLE IF NOT EXISTS public.tasks (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL,
+    user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     title text NOT NULL,
     description text NULL,
     priority text NOT NULL,
@@ -22,63 +22,55 @@ CREATE TABLE public.tasks (
     reminders jsonb NULL,
     energy_level text NULL,
     snoozed_until timestamp with time zone NULL,
-    CONSTRAINT tasks_pkey PRIMARY KEY (id),
-    CONSTRAINT tasks_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
+    CONSTRAINT tasks_pkey PRIMARY KEY (id)
 );
 
--- Enable Row Level Security
+-- Enable RLS and create policies
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 
--- Policy: Users can see their own tasks.
-CREATE POLICY "Enable read access for user's own tasks"
-ON public.tasks FOR SELECT
-USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Enable read access for user's own tasks" ON public.tasks;
+CREATE POLICY "Enable read access for user's own tasks" ON public.tasks FOR SELECT USING (auth.uid() = user_id);
 
--- Policy: Users can insert their own tasks.
-CREATE POLICY "Enable insert for user's own tasks"
-ON public.tasks FOR INSERT
-WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Enable insert for user's own tasks" ON public.tasks;
+CREATE POLICY "Enable insert for user's own tasks" ON public.tasks FOR INSERT WITH CHECK (auth.uid() = user_id);
 
--- Policy: Users can update their own tasks.
-CREATE POLICY "Enable update for user's own tasks"
-ON public.tasks FOR UPDATE
-USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Enable update for user's own tasks" ON public.tasks;
+CREATE POLICY "Enable update for user's own tasks" ON public.tasks FOR UPDATE USING (auth.uid() = user_id);
 
--- Policy: Users can delete their own tasks.
-CREATE POLICY "Enable delete for user's own tasks"
-ON public.tasks FOR DELETE
-USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Enable delete for user's own tasks" ON public.tasks;
+CREATE POLICY "Enable delete for user's own tasks" ON public.tasks FOR DELETE USING (auth.uid() = user_id);
 
 
 -- --- HABITS TABLE ---
--- Stores recurring habits for users.
-
-CREATE TABLE public.habits (
+CREATE TABLE IF NOT EXISTS public.habits (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL,
+    user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     title text NOT NULL,
     icon text NULL,
     time_of_day text NULL,
     completed_days text[] NULL DEFAULT ARRAY[]::text[],
-    CONSTRAINT habits_pkey PRIMARY KEY (id),
-    CONSTRAINT habits_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
+    CONSTRAINT habits_pkey PRIMARY KEY (id)
 );
 
--- Enable Row Level Security
+-- Enable RLS and create policies
 ALTER TABLE public.habits ENABLE ROW LEVEL SECURITY;
 
--- Policies for habits table
+DROP POLICY IF EXISTS "Enable read access for user's own habits" ON public.habits;
 CREATE POLICY "Enable read access for user's own habits" ON public.habits FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Enable insert for user's own habits" ON public.habits;
 CREATE POLICY "Enable insert for user's own habits" ON public.habits FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Enable update for user's own habits" ON public.habits;
 CREATE POLICY "Enable update for user's own habits" ON public.habits FOR UPDATE USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Enable delete for user's own habits" ON public.habits;
 CREATE POLICY "Enable delete for user's own habits" ON public.habits FOR DELETE USING (auth.uid() = user_id);
 
 
 -- --- USER PROGRESS TABLE ---
--- Stores gamification and customization data for each user.
-
-CREATE TABLE public.user_progress (
-    user_id uuid NOT NULL,
+CREATE TABLE IF NOT EXISTS public.user_progress (
+    user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     points integer NOT NULL DEFAULT 0,
     level integer NOT NULL DEFAULT 1,
     streak integer NOT NULL DEFAULT 0,
@@ -87,17 +79,25 @@ CREATE TABLE public.user_progress (
     active_theme text NULL,
     purchased_sound_packs text[] NULL,
     purchased_confetti_packs text[] NULL,
-    active_power_up jsonb NULL,
-    api_keys text[] NULL,
-    CONSTRAINT user_progress_pkey PRIMARY KEY (user_id),
-    CONSTRAINT user_progress_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
+    CONSTRAINT user_progress_pkey PRIMARY KEY (user_id)
 );
 
--- Enable Row Level Security
+-- Add potentially missing columns to user_progress to fix schema cache issues
+ALTER TABLE public.user_progress ADD COLUMN IF NOT EXISTS active_power_up jsonb NULL;
+ALTER TABLE public.user_progress ADD COLUMN IF NOT EXISTS api_keys text[] NULL;
+
+
+-- Enable RLS and create policies
 ALTER TABLE public.user_progress ENABLE ROW LEVEL SECURITY;
 
--- Policies for user_progress table
+DROP POLICY IF EXISTS "Enable read access for user's own progress" ON public.user_progress;
 CREATE POLICY "Enable read access for user's own progress" ON public.user_progress FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Enable insert for user's own progress" ON public.user_progress;
 CREATE POLICY "Enable insert for user's own progress" ON public.user_progress FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Enable update for user's own progress" ON public.user_progress;
 CREATE POLICY "Enable update for user's own progress" ON public.user_progress FOR UPDATE USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Enable delete for user's own progress" ON public.user_progress;
 CREATE POLICY "Enable delete for user's own progress" ON public.user_progress FOR DELETE USING (auth.uid() = user_id);

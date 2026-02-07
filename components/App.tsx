@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, Habit, UserProgress, Priority, SubTask, CustomColors, DbTask } from '../lib/types';
 import { ACHIEVEMENTS } from '../lib/constants';
@@ -101,10 +102,10 @@ const initialProgress: UserProgress = {
     apiKeys: [],
 };
 
-const LoadingScreen: React.FC = () => (
+const LoadingScreen: React.FC<{ message?: string }> = ({ message = "טוען..." }) => (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
         <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-        <p className="mt-4 font-bold text-slate-500">טוען...</p>
+        <p className="mt-4 font-bold text-slate-500">{message}</p>
     </div>
 );
 
@@ -128,6 +129,7 @@ const App: React.FC = () => {
 
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [schemaError, setSchemaError] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [progress, setProgress] = useState<UserProgress>(initialProgress);
@@ -181,40 +183,52 @@ const App: React.FC = () => {
     const fetchData = async () => {
       if (!supabase) return;
       setIsLoading(true);
+      setSchemaError(false);
+
       if (session) {
         isInitialLoadComplete.current = false;
-        // Fetch Tasks, Habits, and Progress in parallel
-        const [tasksResponse, habitsResponse, progressResponse] = await Promise.all([
-          supabase.from('tasks').select('*').eq('user_id', session.user.id),
-          supabase.from('habits').select('*').eq('user_id', session.user.id),
-          supabase.from('user_progress').select('*').eq('user_id', session.user.id).single()
-        ]);
+        try {
+            // Fetch Tasks, Habits, and Progress in parallel
+            const [tasksResponse, habitsResponse, progressResponse] = await Promise.all([
+              supabase.from('tasks').select('*').eq('user_id', session.user.id),
+              supabase.from('habits').select('*').eq('user_id', session.user.id),
+              supabase.from('user_progress').select('*').eq('user_id', session.user.id).single()
+            ]);
 
-        // Process Tasks
-        if (tasksResponse.error) console.error('Error fetching tasks:', tasksResponse.error.message);
-        else setTasks((tasksResponse.data as DbTask[] || []).map(fromDbTask));
-
-        // Process Habits
-        if (habitsResponse.error) console.error('Error fetching habits:', habitsResponse.error.message);
-        else setHabits((habitsResponse.data || []).map(h => ({
-                id: h.id, title: h.title, icon: h.icon, timeOfDay: h.time_of_day, completedDays: h.completed_days || []
-             })));
-        
-        // Process Progress
-        if (progressResponse.error && progressResponse.error.code !== 'PGRST116') { // Ignore 'exact one row' error
-            console.error('Error fetching progress:', progressResponse.error.message);
-            // This is a critical error to inform the user about.
-            if (progressResponse.error.message.includes("schema cache")) {
-                 alert("שגיאה חמורה: נראה שמבנה מסד הנתונים אינו מעודכן. אנא פנה לתמיכה או נסה לרענן את הסכמה ב-Supabase.");
+            // Check for schema cache errors
+            if (
+                (tasksResponse.error && tasksResponse.error.message.includes("schema cache")) ||
+                (habitsResponse.error && habitsResponse.error.message.includes("schema cache")) ||
+                (progressResponse.error && progressResponse.error.message.includes("schema cache"))
+            ) {
+                setSchemaError(true);
+                setIsLoading(false);
+                return;
             }
-        } else if (progressResponse.data) {
-            setProgress(fromDbProgress(progressResponse.data));
-        } else {
-            // No progress found, initialize for new user
-            setProgress(initialProgress);
+
+            // Process Tasks
+            if (tasksResponse.error) console.error('Error fetching tasks:', tasksResponse.error.message);
+            else setTasks((tasksResponse.data as DbTask[] || []).map(fromDbTask));
+
+            // Process Habits
+            if (habitsResponse.error) console.error('Error fetching habits:', habitsResponse.error.message);
+            else setHabits((habitsResponse.data || []).map(h => ({
+                    id: h.id, title: h.title, icon: h.icon, timeOfDay: h.time_of_day, completedDays: h.completed_days || []
+                 })));
+            
+            // Process Progress
+            if (progressResponse.error && progressResponse.error.code !== 'PGRST116') {
+                console.error('Error fetching progress:', progressResponse.error.message);
+            } else if (progressResponse.data) {
+                setProgress(fromDbProgress(progressResponse.data));
+            } else {
+                setProgress(initialProgress);
+            }
+            
+            isInitialLoadComplete.current = true;
+        } catch (err) {
+            console.error("Critical error during data fetch:", err);
         }
-        
-        isInitialLoadComplete.current = true;
       } else {
         setTasks([]);
         setHabits([]);
@@ -233,7 +247,11 @@ const App: React.FC = () => {
         if (session && isInitialLoadComplete.current && supabase) {
             const dbProgress = toDbProgress(progress, session.user.id);
             const { error } = await supabase.from('user_progress').upsert(dbProgress);
-            if(error) console.error("Error saving progress:", error.message);
+            if(error && error.message.includes("schema cache")) {
+                setSchemaError(true);
+            } else if (error) {
+                console.error("Error saving progress:", error.message);
+            }
         }
     };
     
@@ -249,7 +267,7 @@ const App: React.FC = () => {
   useEffect(() => {
     document.body.className = `theme-${progress.activeTheme}`;
   }, [progress.activeTheme]);
-  
+
   useEffect(() => {
     localStorage.setItem('ff_active_sound', activeSound);
   }, [activeSound]);
@@ -283,7 +301,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-
+  // FIX: Restore missing helper functions and event handlers
   const triggerConfetti = () => {
     if (typeof window.confetti === 'function') {
       const isRainbow = progress.purchasedConfettiPacks.includes('rainbow_confetti');
@@ -633,8 +651,6 @@ const App: React.FC = () => {
     if (error) console.error('Error logging out:', error.message);
   };
 
-  const activeFocusTask = tasks.find(t => t.id === focusTaskId);
-
   const handleUpdateTask = async (updatedTask: Task) => {
     if (!supabase) return;
     const { error } = await supabase
@@ -682,9 +698,31 @@ const App: React.FC = () => {
         handleAddTask(newTaskData);
       });
   };
-  
+
+  const activeFocusTask = tasks.find(t => t.id === focusTaskId);
+
+  if (schemaError) {
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+            <div className="bg-white p-8 rounded-2xl shadow-lg border border-indigo-200 w-full max-w-lg">
+                <h1 className="text-3xl font-bold text-indigo-800 mb-4">🔄 מעדכן מבנה נתונים...</h1>
+                <p className="text-slate-700 mb-6">ביצעת שינויים ב-Supabase והשרת עדיין מעבד אותם. זה לוקח בדרך כלל פחות מדקה.</p>
+                <div className="flex justify-center mb-6">
+                    <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+                </div>
+                <button 
+                    onClick={() => window.location.reload()} 
+                    className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 transition-all"
+                >
+                    נסה לרענן עכשיו
+                </button>
+            </div>
+        </div>
+    );
+  }
+
   if (isLoading) {
-    return <LoadingScreen />;
+    return <LoadingScreen message="מכין את הפנדה שלך..." />;
   }
 
   if (!session) {
