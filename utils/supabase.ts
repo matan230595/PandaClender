@@ -1,6 +1,3 @@
-// Fix: Add reference to vite/client to provide types for import.meta.env
-/// <reference types="vite/client" />
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;

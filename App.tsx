@@ -153,11 +153,11 @@ const App: React.FC = () => {
 
   // Supabase Auth
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase!.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
@@ -171,9 +171,9 @@ const App: React.FC = () => {
         isInitialLoadComplete.current = false;
         // Fetch Tasks, Habits, and Progress in parallel
         const [tasksResponse, habitsResponse, progressResponse] = await Promise.all([
-          supabase.from('tasks').select('*').eq('user_id', session.user.id),
-          supabase.from('habits').select('*').eq('user_id', session.user.id),
-          supabase.from('user_progress').select('*').eq('user_id', session.user.id).single()
+          supabase!.from('tasks').select('*').eq('user_id', session.user.id),
+          supabase!.from('habits').select('*').eq('user_id', session.user.id),
+          supabase!.from('user_progress').select('*').eq('user_id', session.user.id).single()
         ]);
 
         // Process Tasks
@@ -213,7 +213,7 @@ const App: React.FC = () => {
     const saveProgress = async () => {
         if (session && isInitialLoadComplete.current) {
             const dbProgress = toDbProgress(progress, session.user.id);
-            const { error } = await supabase.from('user_progress').upsert(dbProgress);
+            const { error } = await supabase!.from('user_progress').upsert(dbProgress);
             if(error) console.error("Error saving progress:", error);
         }
     };
@@ -291,7 +291,7 @@ const App: React.FC = () => {
         user_id: session.user.id
     };
     
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
         .from('tasks')
         .insert(toDbTask(fullNewTask))
         .select()
@@ -317,7 +317,7 @@ const App: React.FC = () => {
         snoozedUntil: undefined
     };
     
-    const { error } = await supabase
+    const { error } = await supabase!
         .from('tasks')
         .update(toDbTask(updatedTask))
         .eq('id', taskId);
@@ -352,7 +352,7 @@ const App: React.FC = () => {
     const snoozedUntil = now + minutes * 60000;
     const updatedTask = { ...task, dueDate: newDueDate, snoozedUntil };
 
-    const { error } = await supabase
+    const { error } = await supabase!
         .from('tasks')
         .update({ 
             due_date: newDueDate.toISOString(),
@@ -377,7 +377,7 @@ const App: React.FC = () => {
     const allSubTasksNowComplete = newSubTasks.length > 0 && newSubTasks.every(st => st.completed);
     const updatedTask = { ...task, subTasks: newSubTasks, completed: allSubTasksNowComplete };
 
-    const { error } = await supabase
+    const { error } = await supabase!
         .from('tasks')
         .update({ sub_tasks: newSubTasks, completed: allSubTasksNowComplete })
         .eq('id', taskId);
@@ -404,7 +404,7 @@ const App: React.FC = () => {
     const newSubTasks = [...task.subTasks, newSubTask];
     const updatedTask = { ...task, subTasks: newSubTasks, completed: false };
 
-    const { error } = await supabase
+    const { error } = await supabase!
         .from('tasks')
         .update({ sub_tasks: newSubTasks, completed: false })
         .eq('id', taskId);
@@ -428,7 +428,7 @@ const App: React.FC = () => {
     
     const updatedHabit = { ...habit, completedDays: newCompletedDays };
 
-    const { error } = await supabase
+    const { error } = await supabase!
         .from('habits')
         .update({ completed_days: newCompletedDays })
         .eq('id', habitId);
@@ -455,7 +455,7 @@ const App: React.FC = () => {
         user_id: session.user.id,
         completed_days: [],
     };
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
         .from('habits')
         .insert(dbHabit)
         .select()
@@ -476,7 +476,7 @@ const App: React.FC = () => {
   };
 
   const handleUpdateHabit = async (updatedHabit: Habit) => {
-      const { error } = await supabase
+      const { error } = await supabase!
         .from('habits')
         .update({
             title: updatedHabit.title,
@@ -493,7 +493,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteHabit = async (habitId: string) => {
-    const { error } = await supabase.from('habits').delete().eq('id', habitId);
+    const { error } = await supabase!.from('habits').delete().eq('id', habitId);
     if (error) {
         console.error("Error deleting habit:", error);
     } else {
@@ -575,14 +575,14 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     isInitialLoadComplete.current = false;
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase!.auth.signOut();
     if (error) console.error('Error logging out:', error);
   };
 
   const activeFocusTask = tasks.find(t => t.id === focusTaskId);
 
   const handleUpdateTask = async (updatedTask: Task) => {
-    const { error } = await supabase
+    const { error } = await supabase!
         .from('tasks')
         .update(toDbTask(updatedTask))
         .eq('id', updatedTask.id);
@@ -598,7 +598,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    const { error } = await supabase!.from('tasks').delete().eq('id', taskId);
     if (error) {
         console.error("Error deleting task:", error);
     } else {
@@ -723,7 +723,7 @@ const App: React.FC = () => {
             {mainView === 'stats' && <ProgressStats tasks={tasks} progress={progress} />}
             {mainView === 'rewards' && <RewardsStore progress={progress} onPurchase={handlePurchase} activeTheme={progress.activeTheme} onThemeChange={handleThemeChange} />}
             {mainView === 'settings' && <Settings 
-                onGoogleLogin={() => supabase.auth.signInWithOAuth({ provider: 'google' })} 
+                onGoogleLogin={() => supabase!.auth.signInWithOAuth({ provider: 'google' })} 
                 isGoogleConnected={!!session} onLogout={handleLogout}
                 isConnectingToGoogle={false}
                 googleUser={session?.user} 

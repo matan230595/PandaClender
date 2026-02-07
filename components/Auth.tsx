@@ -10,6 +10,17 @@ const Auth: React.FC = () => {
     const [error, setError] = useState('');
     const [message, setMessage] = useState('');
 
+    if (!supabase) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+                <div className="bg-white p-8 rounded-2xl shadow-lg border border-red-200 w-full max-w-sm">
+                    <h1 className="text-xl font-bold text-red-800">שגיאת תצורה</h1>
+                    <p className="text-slate-700 mt-2">חיבור Supabase נכשל. לא ניתן להמשיך.</p>
+                </div>
+            </div>
+        );
+    }
+
     const handleAuthAction = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
