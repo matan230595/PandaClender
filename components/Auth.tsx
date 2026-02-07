@@ -49,7 +49,9 @@ const Auth: React.FC = () => {
                 
                 <form onSubmit={handleAuthAction} className="space-y-4 text-end">
                     <div>
+                        <label htmlFor="email" className="sr-only">אימייל</label>
                         <input 
+                            id="email"
                             type="email" 
                             value={email} 
                             onChange={(e) => setEmail(e.target.value)} 
@@ -59,7 +61,9 @@ const Auth: React.FC = () => {
                         />
                     </div>
                     <div>
+                        <label htmlFor="password" className="sr-only">סיסמה</label>
                         <input 
+                            id="password"
                             type="password" 
                             value={password} 
                             onChange={(e) => setPassword(e.target.value)} 

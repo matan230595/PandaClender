@@ -540,7 +540,8 @@ const App: React.FC = () => {
       const prompt = `Generate a supportive, ADHD-friendly email summary for the user's ${type === 'day' ? 'today\'s' : 'this week\'s'} schedule. Tasks: ${JSON.stringify(relevantTasks)} Habits: ${JSON.stringify(habitsStatus)} User Points: ${progress.points} Include: A warm greeting, a clear prioritized list of 3 things to focus on, and a motivational closing. Format: Return ONLY the email body in Hebrew. Use professional yet caring tone. Use bullet points.`;
       const response = await generateContentWithFallback(prompt);
       if (!response) {
-        alert("שגיאה ביצירת המייל. בדוק את מפתחות ה-API שלך בהגדרות.");
+        // AI call failed, maybe show a toast notification in a real app
+        console.error("שגיאה ביצירת המייל. בדוק את מפתחות ה-API שלך בהגדרות.");
         setMainView('settings');
         return;
       }
@@ -551,7 +552,6 @@ const App: React.FC = () => {
       triggerConfetti();
     } catch (error) {
       console.error("Email Generation Error", error);
-      alert("שגיאה ביצירת המייל. בדוק שמפתח ה-API שהזנת תקין.");
     } finally {
       setIsSyncing(false);
     }

@@ -102,8 +102,6 @@ const ReminderSystem: React.FC<ReminderSystemProps> = ({ tasks, onComplete, onSn
     const customMinutes = parseInt(customSnoozeMinutes, 10);
     if (!isNaN(customMinutes) && customMinutes > 0) {
       handleSnooze(customMinutes);
-    } else {
-      alert("נא להזין מספר תקין של דקות.");
     }
   };
 

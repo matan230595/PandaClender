@@ -151,7 +151,7 @@ const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
                         }
                     },
                     onerror: (e: ErrorEvent) => console.error("Live session error:", e),
-                    onclose: () => console.log("Live session closed."),
+                    onclose: () => {},
                 },
                 config: {
                     responseModalities: [Modality.AUDIO],

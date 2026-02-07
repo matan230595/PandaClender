@@ -140,11 +140,12 @@ const Settings: React.FC<SettingsProps> = ({
   
   const handleEnableNotifications = async () => {
     if (!('Notification' in window)) {
-        alert("הדפדפן שלך אינו תומך בהתראות.");
+        // App should have a more robust notification system than alert.
+        console.error("הדפדפן שלך אינו תומך בהתראות.");
         return;
     }
     if (Notification.permission === 'granted') {
-        alert("התראות כבר מופעלות!");
+        // No need to alert the user if they already granted permission.
     } else if (Notification.permission !== 'denied') {
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
@@ -278,6 +279,9 @@ const handleExportProgress = () => {
                         <button onClick={onLogout} className="text-xs font-bold text-red-500 hover:text-red-700 bg-red-100 px-3 py-2 rounded-lg">התנתק</button>
                     </div>
                 }
+                 <div className="bg-slate-100 p-3 rounded-xl text-center">
+                    <p className="text-xs text-slate-500 font-medium">📅 **סנכרון עם Google Calendar יגיע בקרוב!**</p>
+                 </div>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-4">

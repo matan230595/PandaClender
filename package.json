@@ -3,6 +3,9 @@
   "name": "pandaclender-adhd",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "build": "echo 'Static site deployment, no build step required.'"
+  },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
