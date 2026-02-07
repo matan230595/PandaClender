@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Habit } from '../types';
+import { Habit } from '../lib/types';
 
 interface HabitTrackerProps {
   habits: Habit[];

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Task, Priority } from '../types';
+import { Task, Priority } from '../lib/types';
 
 interface DailyScheduleProps {
   tasks: Task[];

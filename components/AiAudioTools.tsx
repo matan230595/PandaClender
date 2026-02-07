@@ -145,6 +145,7 @@ const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
                             });
                         };
                         source.connect(scriptProcessor);
+                        scriptProcessor.connect(inputAudioContext.destination);
                     },
                     onmessage: async (message: LiveServerMessage) => {
                         if (message.serverContent?.outputTranscription) {
@@ -190,7 +191,6 @@ const ConversationTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
     };
     
     useEffect(() => {
-        // This is the cleanup function that will be called when the component unmounts.
         return () => {
             stopSession();
         };
@@ -244,7 +244,6 @@ const TranscriptionTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
     const stopRecording = () => {
         if (mediaRecorderRef.current) {
             mediaRecorderRef.current.stop();
-            // The onstop event will trigger transcription
             setIsRecording(false);
             setIsTranscribing(true);
         }
@@ -256,7 +255,7 @@ const TranscriptionTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
             const base64Audio = await blobToBase64(audioBlob);
             const response = await ai.models.generateContent({
                 model: 'gemini-3-flash-preview',
-                contents: { parts: [{ inlineData: { mimeType: 'audio/webm', data: base64Audio } }, {text: "Transcribe this audio."}] },
+                contents: { parts: [{ inlineData: { mimeType: 'audio/webm', data: base64Audio } }, {text: "Transcribe this audio in Hebrew."}] },
             });
             setTranscribedText(response.text ?? '');
         } catch (err) {
@@ -287,36 +286,65 @@ const TranscriptionTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
 const TtsTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
     const [text, setText] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [generationStatus, setGenerationStatus] = useState('');
     const [selectedVoice, setSelectedVoice] = useState('Kore');
     const audioContextRef = useRef<AudioContext | null>(null);
 
     const generateSpeech = async () => {
         if (!text.trim() || isGenerating) return;
         setIsGenerating(true);
+        setGenerationStatus('מתחיל...');
+
+        const sentences = text.match(/[^.!?]+[.!?\s]*|[^.!?]+$/g) || [];
+        if (sentences.length === 0) {
+            setIsGenerating(false);
+            setGenerationStatus('');
+            return;
+        }
+
+        if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+            audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        }
+        const localAudioContext = audioContextRef.current;
+        let nextStartTime = 0;
+
         try {
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-preview-tts',
-                contents: [{ parts: [{ text }] }],
-                config: {
-                    responseModalities: [Modality.AUDIO],
-                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } },
-                },
-            });
-            const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-            if (base64Audio) {
-                if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-                    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+            for (const [index, sentence] of sentences.entries()) {
+                if (!sentence.trim()) continue;
+                setGenerationStatus(`מייצר משפט ${index + 1} מתוך ${sentences.length}...`);
+                
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash-preview-tts',
+                    contents: [{ parts: [{ text: sentence }] }],
+                    config: {
+                        responseModalities: [Modality.AUDIO],
+                        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } },
+                    },
+                });
+
+                const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                if (base64Audio) {
+                    const audioBuffer = await decodeAudioData(decode(base64Audio), localAudioContext, 24000, 1);
+                    const source = localAudioContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(localAudioContext.destination);
+                    
+                    const startTime = Math.max(nextStartTime, localAudioContext.currentTime);
+                    source.start(startTime);
+                    nextStartTime = startTime + audioBuffer.duration;
                 }
-                const audioBuffer = await decodeAudioData(decode(base64Audio), audioContextRef.current, 24000, 1);
-                const source = audioContextRef.current.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(audioContextRef.current.destination);
-                source.start();
             }
         } catch (err) {
             console.error("TTS error:", err);
+            setGenerationStatus("אירעה שגיאה ביצירת השמע.");
+            setTimeout(() => setGenerationStatus(''), 3000); // Clear error after 3s
         } finally {
-            setIsGenerating(false);
+            // Wait for the last audio chunk to finish playing before resetting state
+            const totalPlaybackTime = (nextStartTime - localAudioContext.currentTime) * 1000;
+            setTimeout(() => {
+                setIsGenerating(false);
+                setGenerationStatus('');
+            }, Math.max(0, totalPlaybackTime));
         }
     };
 
@@ -330,12 +358,17 @@ const TtsTab: React.FC<{ ai: GoogleGenAI }> = ({ ai }) => {
                 placeholder="הקלד טקסט כאן..."
                 className="w-full h-40 p-4 bg-slate-50 border border-slate-200 rounded-xl resize-none"
             />
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-4">
                 <select value={selectedVoice} onChange={e => setSelectedVoice(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold">
                     {voices.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
-                <button onClick={generateSpeech} disabled={isGenerating || !text.trim()} className="flex-grow py-3 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50">
-                    {isGenerating ? 'מייצר...' : 'הפוך לדיבור'}
+                <button onClick={generateSpeech} disabled={isGenerating || !text.trim()} className="flex-grow py-3 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50 flex items-center justify-center">
+                    {isGenerating ? (
+                        <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                            <span>{generationStatus || 'מייצר...'}</span>
+                        </>
+                    ) : 'הפוך לדיבור'}
                 </button>
             </div>
         </div>

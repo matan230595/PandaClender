@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Task, ReminderConfig, CustomReminder } from '../types';
+import { Task, ReminderConfig, CustomReminder } from '../lib/types';
 
 interface TaskDetailModalProps {
   task: Task;

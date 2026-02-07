@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Task, Priority } from '../types';
+import { Task, Priority } from '../lib/types';
 
 interface FocusModeProps {
   task: Task;

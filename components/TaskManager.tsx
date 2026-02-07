@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Task, Priority, EnergyLevel, CustomReminder } from '../types';
-import { CATEGORY_ICONS, ENERGY_LEVEL_ICONS, CATEGORIES } from '../constants';
+import { Task, Priority, EnergyLevel, CustomReminder } from '../lib/types';
+import { CATEGORY_ICONS, ENERGY_LEVEL_ICONS, CATEGORIES } from '../lib/constants';
 import DailySchedule from './DailySchedule';
 
 interface TaskManagerProps {

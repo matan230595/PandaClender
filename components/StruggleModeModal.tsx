@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Task } from '../types';
+import { Task } from '../lib/types';
 import { generateContentWithFallback } from '../utils/ai';
 
 interface StruggleModeModalProps {

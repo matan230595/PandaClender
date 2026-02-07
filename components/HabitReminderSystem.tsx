@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Habit } from '../types';
+import { Habit } from '../lib/types';
 
 interface HabitReminderSystemProps {
   habits: Habit[];

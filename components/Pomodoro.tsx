@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Task } from '../types';
+import { Task } from '../lib/types';
 
 interface PomodoroProps {
   onClose: () => void;

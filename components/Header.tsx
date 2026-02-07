@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserProgress } from '../types';
+import { UserProgress } from '../lib/types';
 
 interface HeaderProps {
   progress: UserProgress;

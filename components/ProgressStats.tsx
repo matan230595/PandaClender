@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Task, UserProgress } from '../types';
+import { Task, UserProgress } from '../lib/types';
 
 interface ProgressStatsProps {
   tasks: Task[];

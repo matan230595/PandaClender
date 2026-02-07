@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Task } from '../types';
+import { Task } from '../lib/types';
 
 interface CalendarDayModalProps {
   date: Date;

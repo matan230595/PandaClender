@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { UserProgress } from '../types';
-import { APP_REWARDS } from '../constants';
+import { UserProgress } from '../lib/types';
+import { APP_REWARDS } from '../lib/constants';
 
 interface RewardsStoreProps {
   progress: UserProgress;

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Task, Priority, EnergyLevel } from '../types';
-import { ENERGY_LEVEL_ICONS, CATEGORY_ICONS } from '../constants';
+import { Task, Priority, EnergyLevel } from '../lib/types';
+import { ENERGY_LEVEL_ICONS, CATEGORY_ICONS } from '../lib/constants';
 
 interface DashboardProps {
   tasks: Task[];

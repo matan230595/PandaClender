@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Task, UserProgress } from '../types';
+import { Task, UserProgress } from '../lib/types';
 import { generateContentWithFallback } from '../utils/ai';
 
 interface AiCoachProps {

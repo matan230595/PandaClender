@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Task, Habit, Priority, CustomColors, UserProgress } from '../types';
+import { Task, Habit, Priority, CustomColors, UserProgress } from '../lib/types';
 import { GoogleGenAI } from "@google/genai";
-import { APP_REWARDS } from '../constants';
+import { APP_REWARDS } from '../lib/constants';
 import { exportToCsv } from '../utils/export';
 
 type Status = 'unchecked' | 'checking' | 'valid' | 'invalid';
