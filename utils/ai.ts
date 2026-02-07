@@ -1,5 +1,3 @@
-
-
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { Priority } from '../lib/types';
 import { supabase } from './supabase';
@@ -13,7 +11,7 @@ export const getApiKeys = async (): Promise<string[]> => {
 
   try {
     const { data, error } = await supabase
-        .from('user_progress')
+        .from('user_profile_progress')
         .select('api_keys')
         .eq('user_id', user.id)
         .single();
@@ -43,10 +41,19 @@ export const getGenAi = async (): Promise<GoogleGenAI | null> => {
     try {
       const ai = new GoogleGenAI({ apiKey: key });
       // Test the key with a simple request to ensure it's valid
-      await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: "test" });
+      await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: "test validation" });
       return ai; // Return the first valid instance
-    } catch (error) {
-      console.warn(`API key ending in ${key.slice(-4)} failed. Trying next...`);
+    } catch (error: any) {
+      const msg = error?.message || String(error);
+      const isRestrictionError = msg.toLowerCase().includes("referrer") || 
+                                 msg.toLowerCase().includes("not allowed") || 
+                                 msg.includes("403");
+      
+      if (isRestrictionError) {
+          console.error(`Gemini API Key restricted for this domain: ${msg}. המפתח תקין אך מוגבל לדומיין אחר. יש להוסיף את דומיין האתר להגדרות ה-API Key.`);
+      } else {
+          console.warn(`API key validation failed for key ending in ${key.slice(-4)}: ${msg}`);
+      }
     }
   }
   
@@ -70,7 +77,7 @@ export async function generateContentWithFallback(
       ...(config && { config }),
     });
     return response;
-  } catch (error) {
+  } catch (error: any) {
      console.error("generateContentWithFallback failed", error);
      throw error;
   }
@@ -88,7 +95,7 @@ const taskParserSchema = {
         description: 'The calculated due date and time in ISO 8601 format.'
       },
       priority: {
-        type: Type.STRING,
+        type: Priority.URGENT,
         enum: [Priority.URGENT, Priority.IMPORTANT, Priority.REGULAR],
         description: 'The inferred priority of the task.'
       },
@@ -119,7 +126,7 @@ interface ParsedTask {
 export async function parseTaskFromCommand(command: string): Promise<ParsedTask | null> {
     const ai = await getGenAi();
     if (!ai) {
-        throw new Error("לא הוגדר מפתח AI. אנא הגדר אותו בהגדרות.");
+        throw new Error("לא הוגדר מפתח AI תקין. אנא ודא שהגדרת אותו בהגדרות (ייתכן שהמפתח מוגבל לדומיין אחר).");
     }
 
     const prompt = `You are a task management assistant for an app called PandaClender. Your job is to parse a user's command written in Hebrew and extract task details.
@@ -155,8 +162,8 @@ Based on the command, extract the following:
             return parsed as ParsedTask;
         }
         return null;
-    } catch (error) {
+    } catch (error: any) {
         console.error("AI task parsing failed", error);
-        throw new Error("ה-AI לא הצליח לעבד את הבקשה. ייתכן שהמפתח אינו תקין.");
+        throw new Error(`ה-AI לא הצליח לעבד את הבקשה: ${error?.message || 'שגיאת אימות'}`);
     }
 }

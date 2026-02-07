@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, Habit, UserProgress, Priority, SubTask, CustomColors, DbTask } from '../lib/types';
 import { ACHIEVEMENTS } from '../lib/constants';
@@ -163,6 +162,8 @@ const App: React.FC = () => {
   
   const [activeSound, setActiveSound] = useState(localStorage.getItem('ff_active_sound') || 'none');
 
+  const activeFocusTask = tasks.find(t => t.id === focusTaskId);
+
   // Supabase Auth
   useEffect(() => {
     if (!supabase) return;
@@ -187,12 +188,33 @@ const App: React.FC = () => {
 
       if (session) {
         isInitialLoadComplete.current = false;
+
+        // Load local fallback first (instant UI, then Supabase overrides)
         try {
-            // Fetch Tasks, Habits, and Progress in parallel
+          const key = `ff_state_${session.user.id}`;
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.tasks) {
+              setTasks(parsed.tasks.map((t: any) => ({
+                ...t,
+                dueDate: new Date(t.dueDate),
+                creationDate: new Date(t.creationDate)
+              })));
+            }
+            if (parsed?.habits) setHabits(parsed.habits);
+            if (parsed?.progress) setProgress(parsed.progress);
+          }
+        } catch (e) {
+          console.warn("Failed loading local state", e);
+        }
+
+        try {
+            // Fetch Tasks, Habits, and Progress in parallel from Supabase
             const [tasksResponse, habitsResponse, progressResponse] = await Promise.all([
               supabase.from('tasks').select('*').eq('user_id', session.user.id),
               supabase.from('habits').select('*').eq('user_id', session.user.id),
-              supabase.from('user_progress').select('*').eq('user_id', session.user.id).single()
+              supabase.from('user_profile_progress').select('*').eq('user_id', session.user.id).single()
             ]);
 
             // Check for schema cache errors
@@ -241,12 +263,31 @@ const App: React.FC = () => {
     fetchData();
   }, [session]);
 
+  // Persist state locally (fallback against tab discard / refresh)
+  useEffect(() => {
+    if (!session) return;
+
+    const key = `ff_state_${session.user.id}`;
+    const payload = {
+      tasks,
+      habits,
+      progress,
+      savedAt: Date.now(),
+    };
+
+    try {
+      localStorage.setItem(key, JSON.stringify(payload));
+    } catch (e) {
+      console.warn("Failed saving local state", e);
+    }
+  }, [session, tasks, habits, progress]);
+
   // Data Saving for Progress
   useEffect(() => {
     const saveProgress = async () => {
         if (session && isInitialLoadComplete.current && supabase) {
             const dbProgress = toDbProgress(progress, session.user.id);
-            const { error } = await supabase.from('user_progress').upsert(dbProgress);
+            const { error } = await supabase.from('user_profile_progress').upsert(dbProgress);
             if(error && error.message.includes("schema cache")) {
                 setSchemaError(true);
             } else if (error) {
@@ -301,7 +342,6 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // FIX: Restore missing helper functions and event handlers
   const triggerConfetti = () => {
     if (typeof window.confetti === 'function') {
       const isRainbow = progress.purchasedConfettiPacks.includes('rainbow_confetti');
@@ -698,8 +738,6 @@ const App: React.FC = () => {
         handleAddTask(newTaskData);
       });
   };
-
-  const activeFocusTask = tasks.find(t => t.id === focusTaskId);
 
   if (schemaError) {
     return (
