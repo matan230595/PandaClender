@@ -2,6 +2,10 @@
 import React, { useState } from 'react';
 import { supabase } from '../utils/supabase';
 
+const Spinner: React.FC = () => (
+    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+);
+
 const Auth: React.FC = () => {
     const [isSignUp, setIsSignUp] = useState(false);
     const [email, setEmail] = useState('');
@@ -27,36 +31,55 @@ const Auth: React.FC = () => {
         setError('');
         setMessage('');
 
-        const authFunction = isSignUp 
-            ? supabase.auth.signUp 
-            : supabase.auth.signInWithPassword;
-        
-        const { error } = await authFunction({ email, password });
+        try {
+            const authFunction = isSignUp 
+                ? supabase.auth.signUp 
+                : supabase.auth.signInWithPassword;
+            
+            const { error } = await authFunction({ email, password });
 
-        if (error) {
-            setError(error.message);
-        } else if (isSignUp) {
-            setMessage('נשלח מייל אימות! אנא בדוק את תיבת הדואר שלך.');
+            if (error) {
+                setError(error.message);
+            } else if (isSignUp) {
+                setMessage('נשלח מייל אימות! אנא בדוק את תיבת הדואר שלך.');
+            }
+            // On successful sign-in, the onAuthStateChange listener in App.tsx will handle the state change.
+        } catch (err: any) {
+            console.error("Caught exception during auth:", err);
+            setError("אירעה שגיאה בלתי צפויה. בדוק את חיבור האינטרנט שלך.");
+        } finally {
+            setLoading(false);
         }
-        // On successful sign-in, the onAuthStateChange listener in App.tsx will handle the state change.
-        setLoading(false);
     };
 
     const handleGoogleLogin = async () => {
+        setLoading(true);
         setError('');
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-        });
-        if (error) setError(error.message);
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+              provider: 'google',
+            });
+            if (error) {
+                setError(error.message);
+                setLoading(false);
+            }
+            // On success, the page redirects, so no need to explicitly set loading to false.
+        } catch (err: any) {
+            console.error("Caught exception during Google auth:", err);
+            setError("אירעה שגיאה בלתי צפויה.");
+            setLoading(false);
+        }
     };
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
-            <h1 className="text-4xl font-bold text-indigo-900 mb-2">PandaClender</h1>
-            <p className="text-slate-500 mb-8">הפוקוס שלך, השקט שלך ✨</p>
-            <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-200 w-full max-w-sm">
-                <h2 className="text-xl font-bold text-slate-800 mb-4">{isSignUp ? 'הרשמה' : 'התחברות'}</h2>
-                <p className="text-slate-500 mb-6 text-sm">כדי לסנכרן את המשימות שלך בין מכשירים.</p>
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4 transition-all duration-300">
+            <div className="text-center mb-8 animate-in fade-in slide-in-from-top duration-500">
+                <h1 className="text-4xl font-black text-indigo-900">PandaClender</h1>
+                <p className="text-slate-500 font-bold">הפוקוס שלך, השקט שלך ✨</p>
+            </div>
+            <div className="bg-white p-8 rounded-3xl shadow-lg border border-slate-100 w-full max-w-sm animate-in fade-in zoom-in-95 duration-500">
+                <h2 className="text-2xl font-bold text-slate-800 mb-2 text-center">{isSignUp ? 'יצירת חשבון חדש' : 'התחברות לחשבון'}</h2>
+                <p className="text-slate-500 mb-6 text-sm text-center">כדי לסנכרן את המשימות שלך בין מכשירים.</p>
                 
                 <form onSubmit={handleAuthAction} className="space-y-4 text-end">
                     <div>
@@ -87,14 +110,14 @@ const Auth: React.FC = () => {
                     <button 
                         type="submit"
                         disabled={loading}
-                        className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                        className="w-full h-12 flex items-center justify-center py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all duration-300 disabled:opacity-75 disabled:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                     >
-                        {loading ? 'טוען...' : (isSignUp ? 'הירשם' : 'התחבר')}
+                        {loading && !isSignUp ? <Spinner /> : (isSignUp ? 'הירשם' : 'התחבר')}
                     </button>
                 </form>
 
-                {error && <p className="text-red-500 text-xs mt-4">{error}</p>}
-                {message && <p className="text-emerald-500 text-xs mt-4">{message}</p>}
+                {error && <p className="text-red-600 text-xs mt-4 text-center bg-red-50 p-3 rounded-lg border border-red-200">{error}</p>}
+                {message && <p className="text-emerald-600 text-xs mt-4 text-center bg-emerald-50 p-3 rounded-lg border border-emerald-200">{message}</p>}
 
                 <div className="relative my-6">
                     <div className="absolute inset-0 flex items-center">
@@ -107,12 +130,12 @@ const Auth: React.FC = () => {
 
                 <button 
                     onClick={handleGoogleLogin} 
-                    className="w-full py-3 px-6 bg-white border-2 border-slate-200 rounded-xl flex items-center justify-center gap-3 font-bold text-slate-700 hover:border-slate-300 transition-colors">
-                    <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google icon" />
-                    המשך עם גוגל
+                    disabled={loading}
+                    className="w-full h-12 flex items-center justify-center py-3 px-6 bg-white border-2 border-slate-200 rounded-xl gap-3 font-bold text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-all duration-300 disabled:opacity-75">
+                    {loading ? <Spinner /> : <><img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google icon" /> המשך עם גוגל</>}
                 </button>
 
-                <p className="text-xs text-slate-500 mt-6">
+                <p className="text-xs text-slate-500 mt-6 text-center">
                     {isSignUp ? 'כבר יש לך חשבון? ' : 'אין לך חשבון? '}
                     <button onClick={() => { setIsSignUp(!isSignUp); setError(''); setMessage(''); }} className="font-bold text-indigo-600 hover:underline">
                         {isSignUp ? 'התחבר' : 'הירשם'}
